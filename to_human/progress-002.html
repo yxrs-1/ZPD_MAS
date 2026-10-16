@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>任务改到《信息系统与社会》</title>
+<style>
+  :root {
+    --ink: #1c1915;
+    --muted: #5c564c;
+    --paper: #f4f0e6;
+    --card: #fffaf3;
+    --line: #e2d8c8;
+    --accent: #9a3412;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Palatino Linotype", Palatino, "Songti SC", serif;
+    line-height: 1.55;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; font-weight: 600; }
+  h2 { font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+  .kicker { font-family: "Segoe UI", sans-serif; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: "Segoe UI", sans-serif; font-size: 0.75rem; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 10px 0; }
+  .note { color: var(--muted); font-size: 0.92rem; }
+  ol { padding-left: 1.2rem; }
+  li { margin: 0.3rem 0; }
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">方向调整 · 2026-10-17</p>
+  <h1>这学期做的是信息系统，不是写程序</h1>
+  <p>教材是沪教版必修 2《信息系统与社会》。目录上的学生活动是调查、分析、体验、规划和讨论。网页上的第一件任务改成项目二里的分析表。上一版把第一题设成 Python 频数统计，和这册书对不上，已经从本学期范围里拿掉。</p>
+
+  <h2>书里实际要学生动手的事</h2>
+  <table>
+    <thead><tr><th>位置</th><th>学生完成什么</th><th>网页怎么用</th></tr></thead>
+    <tbody>
+      <tr><td>项目二 · 活动 2.2</td><td>分析公交 IC 卡「新卡充值」的人员、硬件、软件、数据、网络，并说明它们如何配合</td><td>第一块任务。可以给支架</td></tr>
+      <tr><td>项目二 · 活动 2.3</td><td>对自己在活动 2.1 选定的系统做同样的分析，再归纳组成要素</td><td>撤掉支架之后的独立任务</td></tr>
+      <tr><td>项目二 · 活动 2.1、2.4</td><td>写出业务里信息如何输入、存储、处理、输出；从乘客和公交公司两个角度写优势与局限</td><td>同一单元的后续页</td></tr>
+      <tr><td>项目三 · 活动 3.1</td><td>体验移动点餐，记下系统采集了哪些数据</td><td>第二单元</td></tr>
+      <tr><td>项目六 · 活动 6.1</td><td>按数字家庭的功能给设备规划 IP 并作图</td><td>第三单元。检查的是地址是否冲突、设备有没有地址</td></tr>
+      <tr><td>项目九</td><td>顺着网络订票过程指出安全风险和防范</td><td>第四单元。风险要落到硬件、软件、网络、数据或人员</td></tr>
+      <tr><td>第二单元里的开发点餐软件</td><td>教材写了借助工具做简单网络应用</td><td>这学期不做</td></tr>
+    </tbody>
+  </table>
+
+  <h2>第一页长什么样</h2>
+  <div class="card">
+    <p>学生填写的是一张组成要素表，外加一段「这些部分如何配合」的说明。表单提交的是这一组内容。页面记下改了哪一格、哪一项检查没过、停顿和求助。</p>
+    <p>检查不看文采。它看五类有没有空、例子是不是放错类（余额写进硬件）、配合说明里能不能看出数据传到哪里。活动 2.3 再看例子是不是还停在公交充值，而没有换成学生自己选的系统。</p>
+    <p>第 4 级最多给充值业务里的一个最小例子，下一轮就收掉，并且不替学生把自选系统写完。</p>
+  </div>
+
+  <h2>研究问题没有改</h2>
+  <p>仍然是：只根据学生和页面的交互，判断离独立完成还差多远，再给会撤走的支架。变的是证据。上一轮尺子里的「连续报错」改称为「同一格检查连续没过」。那次 0.583 对 0.333 的对比还留着，只说明度量能分开两种策略，不说明这门课的学习效果。</p>
+
+  <h2>接着做</h2>
+  <ol>
+    <li>按活动 2.2 / 2.3 重写决策点，再谈新的规则。不拿旧的 12 条编程式决策去改分。</li>
+    <li>泄露指：支架把学生自选系统的五要素写全，或把活动 2.3 的答案提前给到。</li>
+    <li>教师条仍显示谁停在哪一格。教师可以关掉自动支架。</li>
+  </ol>
+  <p class="note">项目五、六里连接真实路由器的步骤留在机房，不搬进网页。</p>
+</main>
+</body>
+</html>
