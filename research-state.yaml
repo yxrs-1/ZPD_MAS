@@ -1,0 +1,105 @@
+# Research State — Central Project Tracking
+
+project:
+  title: "基于多智能体系统的支架式学习系统在高中信息科技课的应用"
+  question: "在高中信息科技课的任务网页里，只根据学生与页面的交互事件，能否判断学生离独立完成还差多远，并给出会随独立成功而撤走的支架？"
+  status: active
+  started: "2026-10-17"
+  domain: "AI in education; contingent scaffolding; multi-agent tutoring"
+
+literature:
+  key_papers:
+    - id: "vandePol2010"
+      title: "Scaffolding in Teacher–Student Interaction: A Decade of Research"
+      authors: "van de Pol, Volman, and Beishuizen"
+      year: 2010
+      relevance: "支架的三条标准：随学情调整、逐步撤走、把责任交还学生。测量是主要难点。"
+    - id: "vandePol2019"
+      title: "Scaffolding Student Understanding in Small-Group Work"
+      authors: "van de Pol and colleagues"
+      year: 2019
+      relevance: "只做到随学情调整还不够，撤得不合时机就没有后续吸收。"
+    - id: "genmentor2025"
+      title: "LLM-powered Multi-agent Framework for Goal-oriented Learning in Intelligent Tutoring System"
+      authors: "Wang et al."
+      year: 2025
+      relevance: "多智能体加动态学习者画像。对象是职业目标学习，不是课堂任务过程。"
+    - id: "intellicode2025"
+      title: "IntelliCode: A Multi-Agent LLM Tutoring System with Centralized Learner Modeling"
+      authors: "Jones David and Ghosh"
+      year: 2025
+      relevance: "单一写入者维护学习者状态，分级提示。证据来自做题与提示使用，不是编辑—运行轨迹，也未测撤架后的独立完成。"
+    - id: "cohn2025"
+      title: "A Theory of Adaptive Scaffolding for LLM-Based Pedagogical Agents"
+      authors: "Cohn et al."
+      year: 2025
+      relevance: "用证据中心设计与最近发展区约束大模型支架。证据来自形成性作答，不是编程操作流。"
+    - id: "multitutor2025"
+      title: "MultiTutor: Collaborative LLM Agents for Multimodal Student Support"
+      authors: "Sun et al."
+      year: 2025
+      relevance: "有支架智能体，但是把讲解按难度排开。评价的是文本质量，不是学习结果或撤架。"
+    - id: "lak2017ct"
+      title: "Hypothesis-driven learning analytics for computational thinking in block-based programming"
+      authors: "LAK 2017 framework paper"
+      year: 2017
+      relevance: "高中编程日志能暴露最终程序里看不到的策略。尚未把日志闭环到撤架。"
+  open_problems:
+    - "现有多智能体导师要么按目标生成内容，要么把讲解排成阶梯，很少根据编辑、运行、报错决定给多少帮助。"
+    - "支架理论要求随学情调整并且适时撤走，但这件事在课堂里很难测量。"
+    - "编程过程日志已被用来评估计算思维，却还没有接到“给支架—撤支架—再独立做”的闭环。"
+  evidence_gaps:
+    - "没有面向高中信息科技任务页的证据：同一条交互轨迹既判断学情，又限制支架强度，并用撤架后的同类任务检验。"
+    - "多智能体相对于同一份事件上的简单规则，是否真的减少过度帮助，尚未对照。"
+
+hypotheses:
+  - id: H0
+    statement: "在预先写好的决策点上，按错误连续次数升降的阶梯，其过度帮助率低于始终给第2级提示的固定策略；阶梯仍会在学生停手、错误虽多但已有进展、以及连点求助时给得过重。"
+    status: active
+    motivation: "先把度量校准好，并给后续智能体一个不能回避的简单对照。"
+    parent: null
+    priority: high
+  - id: H1
+    statement: "仅用交互事件估计的四种处境（能独立、差一点、反复卡在同一错误、停手或刷求助），与教师在同一轨迹上的判断一致，且高于只看这一步对错。"
+    status: pending
+    motivation: "学情判断如果只是做对没做对，支架就不需要过程数据。"
+    parent: null
+    priority: high
+  - id: H2
+    statement: "随处境选择强度、并在无支架成功后降级，会比固定第2级提示带来更高的无支架同类题得分，同时求助次数更低。"
+    status: pending
+    motivation: "支架的终点是把责任交还，不是把当前题做对。"
+    parent: null
+    priority: high
+  - id: H3
+    statement: "诊断、学科核对、措辞分开、且只有编排者能改写状态时，答案泄露率低于一个同时诊断并直接回复的模型，学情判断不更差。"
+    status: pending
+    motivation: "多智能体的价值如果存在，应体现在少泄答案，而不是回复更长。"
+    parent: null
+    priority: medium
+  - id: H4
+    statement: "在同一批事件特征上，确定性规则的过度帮助率与多智能体相差不超过5个百分点。若成立，贡献在证据和撤架规则，不在智能体个数。"
+    status: pending
+    motivation: "防止把多智能体当成默认答案。"
+    parent: null
+    priority: high
+
+experiments:
+  proxy_metric: "overhelp_rate：所选支架级别高于该决策点允许的最高级别的比例。越低越好。"
+  baseline_value: null
+  best_value: null
+  total_runs: 0
+  trajectory: []
+
+outer_loop:
+  cycle: 0
+  last_direction: null
+  last_reflection: ""
+
+workspace:
+  findings: "findings.md"
+  log: "research-log.md"
+  literature_dir: "literature/"
+  experiments_dir: "experiments/"
+  to_human_dir: "to_human/"
+  paper_dir: "paper/"
