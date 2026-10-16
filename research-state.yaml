@@ -55,7 +55,7 @@ literature:
 hypotheses:
   - id: H0
     statement: "在预先写好的决策点上，按错误连续次数升降的阶梯，其过度帮助率低于始终给第2级提示的固定策略；阶梯仍会在学生停手、错误虽多但已有进展、以及连点求助时给得过重。"
-    status: active
+    status: supported
     motivation: "先把度量校准好，并给后续智能体一个不能回避的简单对照。"
     parent: null
     priority: high
@@ -86,10 +86,17 @@ hypotheses:
 
 experiments:
   proxy_metric: "overhelp_rate：所选支架级别高于该决策点允许的最高级别的比例。越低越好。"
-  baseline_value: null
-  best_value: null
-  total_runs: 0
-  trajectory: []
+  baseline_value: 0.583
+  best_value: 0.333
+  total_runs: 1
+  trajectory:
+    - run_id: "run_001"
+      hypothesis: "H0"
+      metric_value: 0.333
+      delta: "-0.250"
+      wall_time_min: 1
+      change_summary: "错误次数阶梯对照始终给第2级。脚本决策点，非学生。"
+      timestamp: "2026-10-17"
 
 outer_loop:
   cycle: 0

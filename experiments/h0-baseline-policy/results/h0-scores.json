@@ -1,0 +1,287 @@
+{
+  "hypothesis": "H0",
+  "policies": {
+    "B0_fixed_level_2": {
+      "n": 12,
+      "overhelp_rate": 0.5833333333333334,
+      "underhelp_rate": 0.16666666666666666,
+      "within_band_rate": 0.25,
+      "leak_rate": 0.0,
+      "rows": [
+        {
+          "id": "ind_a",
+          "gold_state": "independent",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "ind_b",
+          "gold_state": "independent",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "zpd_first_error",
+          "gold_state": "zpd",
+          "gold_min": 2,
+          "gold_max": 2,
+          "level": 2,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "zpd_two_errors_progress",
+          "gold_state": "zpd",
+          "gold_min": 2,
+          "gold_max": 3,
+          "level": 2,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "frustrated_same_4",
+          "gold_state": "frustrated",
+          "gold_min": 4,
+          "gold_max": 4,
+          "level": 2,
+          "overhelp": false,
+          "underhelp": true,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "frustrated_same_5",
+          "gold_state": "frustrated",
+          "gold_min": 4,
+          "gold_max": 4,
+          "level": 2,
+          "overhelp": false,
+          "underhelp": true,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "disengaged_no_events",
+          "gold_state": "disengaged",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "disengaged_idle",
+          "gold_state": "disengaged",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "gaming_hints",
+          "gold_state": "gaming",
+          "gold_min": 1,
+          "gold_max": 1,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "zpd_thinking",
+          "gold_state": "zpd",
+          "gold_min": 1,
+          "gold_max": 1,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "zpd_changed_errors_progress",
+          "gold_state": "zpd",
+          "gold_min": 2,
+          "gold_max": 3,
+          "level": 2,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "gaming_one_error",
+          "gold_state": "gaming",
+          "gold_min": 1,
+          "gold_max": 1,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        }
+      ]
+    },
+    "B1_error_streak_ladder": {
+      "n": 12,
+      "overhelp_rate": 0.3333333333333333,
+      "underhelp_rate": 0.0,
+      "within_band_rate": 0.6666666666666666,
+      "leak_rate": 0.0,
+      "rows": [
+        {
+          "id": "ind_a",
+          "gold_state": "independent",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 0,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "ind_b",
+          "gold_state": "independent",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 0,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "zpd_first_error",
+          "gold_state": "zpd",
+          "gold_min": 2,
+          "gold_max": 2,
+          "level": 2,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "zpd_two_errors_progress",
+          "gold_state": "zpd",
+          "gold_min": 2,
+          "gold_max": 3,
+          "level": 3,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "frustrated_same_4",
+          "gold_state": "frustrated",
+          "gold_min": 4,
+          "gold_max": 4,
+          "level": 4,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "frustrated_same_5",
+          "gold_state": "frustrated",
+          "gold_min": 4,
+          "gold_max": 4,
+          "level": 4,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "disengaged_no_events",
+          "gold_state": "disengaged",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 1,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "disengaged_idle",
+          "gold_state": "disengaged",
+          "gold_min": 0,
+          "gold_max": 0,
+          "level": 1,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "gaming_hints",
+          "gold_state": "gaming",
+          "gold_min": 1,
+          "gold_max": 1,
+          "level": 1,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "zpd_thinking",
+          "gold_state": "zpd",
+          "gold_min": 1,
+          "gold_max": 1,
+          "level": 1,
+          "overhelp": false,
+          "underhelp": false,
+          "within_band": true,
+          "leak": false
+        },
+        {
+          "id": "zpd_changed_errors_progress",
+          "gold_state": "zpd",
+          "gold_min": 2,
+          "gold_max": 3,
+          "level": 4,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        },
+        {
+          "id": "gaming_one_error",
+          "gold_state": "gaming",
+          "gold_min": 1,
+          "gold_max": 1,
+          "level": 2,
+          "overhelp": true,
+          "underhelp": false,
+          "within_band": false,
+          "leak": false
+        }
+      ]
+    }
+  }
+}
