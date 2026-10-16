@@ -77,6 +77,12 @@ hypotheses:
     motivation: "多智能体的价值如果存在，应体现在少泄答案，而不是回复更长。"
     parent: null
     priority: medium
+  - id: H5
+    statement: "把 H0 的连续失败阶梯原样用于项目二的新决策点时，会在只剩一类没写对、活动 2.3 仍在抄充值例子、学生停手、以及一次未过加上连续求助时给得过重。"
+    status: supported
+    motivation: "换教材之后要检查旧尺子会不会在新任务上给过头，而不是在旧的 12 条上再调一次。"
+    parent: H0
+    priority: high
   - id: H4
     statement: "在同一批事件特征上，确定性规则的过度帮助率与多智能体相差不超过5个百分点。若成立，贡献在证据和撤架规则，不在智能体个数。"
     status: pending
@@ -88,14 +94,21 @@ experiments:
   proxy_metric: "overhelp_rate：所选支架级别高于该决策点允许的最高级别的比例。越低越好。"
   baseline_value: 0.583
   best_value: 0.333
-  total_runs: 1
+  total_runs: 2
   trajectory:
     - run_id: "run_001"
       hypothesis: "H0"
       metric_value: 0.333
       delta: "-0.250"
       wall_time_min: 1
-      change_summary: "错误次数阶梯对照始终给第2级。脚本决策点，非学生。"
+      change_summary: "错误次数阶梯对照始终给第2级。编程式脚本决策点，非学生。"
+      timestamp: "2026-10-17"
+    - run_id: "run_002"
+      hypothesis: "H5"
+      metric_value: 0.417
+      delta: null
+      wall_time_min: 1
+      change_summary: "同一阶梯搬到项目二新决策点。对照固定提示 0.667。与 H0 不是同一批题目。"
       timestamp: "2026-10-17"
 
 outer_loop:
