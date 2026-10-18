@@ -52,3 +52,36 @@ class CurriculumStandard:
 
     def source(self) -> StandardSource:
         return StandardSource(self.name, self.stage, self.clauses, current=True)
+
+
+class Rejected(Exception):
+    pass
+
+
+class KnowledgeBase:
+    def __init__(self) -> None:
+        self._lessons: dict[tuple[str, str, str], TextbookLesson] = {}
+        self._standards: dict[str, CurriculumStandard] = {}
+
+    def add_lesson(self, lesson: TextbookLesson) -> None:
+        key = (lesson.version, lesson.volume, lesson.lesson)
+        if key in self._lessons:
+            raise Rejected("this lesson is already stored")
+        self._lessons[key] = lesson
+
+    def add_standard(self, standard: CurriculumStandard) -> None:
+        if standard.stage in self._standards:
+            raise Rejected("this stage already has a current standard")
+        self._standards[standard.stage] = standard
+
+    def get_lesson(self, version: str, volume: str, lesson: str) -> TextbookLesson:
+        return self._lessons[(version, volume, lesson)]
+
+    def get_standard(self, stage: str) -> CurriculumStandard:
+        return self._standards[stage]
+
+    def lesson_count(self) -> int:
+        return len(self._lessons)
+
+    def standard_count(self) -> int:
+        return len(self._standards)
