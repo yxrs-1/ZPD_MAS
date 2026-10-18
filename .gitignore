@@ -147,3 +147,10 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Local worktrees and Python test artifacts
+.worktrees/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
