@@ -40,6 +40,8 @@ class Session:
         return PageView(self._presets, self._scaffold)
 
     def ask(self, question: str, source: HelpSource) -> PageView:
+        if question.strip() == "":
+            return self.view()
         self.record = TaskRecord(
             statement=self.record.statement,
             answer=self.record.answer,
@@ -48,15 +50,21 @@ class Session:
                 helps=self.record.behavior.helps + (HelpEvent(text=question, source=source),),
             ),
         )
-        scaffold_type = self._decision.choose_type(self.record, question)
+        try:
+            scaffold_type = self._decision.choose_type(self.record, question)
+        except Exception:
+            return self.view()
         if scaffold_type not in SCAFFOLD_TYPE_VALUES:
             return self.view()
-        draft = self._scaffold_agent.produce(
-            scaffold_type,
-            question,
-            self.record.statement,
-            self.record.answer,
-        )
+        try:
+            draft = self._scaffold_agent.produce(
+                scaffold_type,
+                question,
+                self.record.statement,
+                self.record.answer,
+            )
+        except Exception:
+            return self.view()
         scaffold = _visible_scaffold(draft)
         if scaffold.is_empty():
             return self.view()
