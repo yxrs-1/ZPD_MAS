@@ -8,9 +8,11 @@ from scaffolding.records import (
     Asset,
     HelpEvent,
     HelpSource,
+    OpenQuestion,
     TaskRecord,
+    TrueFalseQuestion,
 )
-from scaffolding.tasks import StudentWork, TaskCatalog
+from scaffolding.tasks import Rejected, StudentWork, TaskCatalog
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,12 @@ class DialogueTurn:
     question: str
     source: HelpSource
     scaffold: Scaffold | None
+
+
+@dataclass(frozen=True)
+class Revealed:
+    answer: str | tuple[str, ...]
+    explanation: str
 
 
 @dataclass(frozen=True)
@@ -60,12 +68,15 @@ class Session:
         return TaskRecord(self.work.questions, self.work.answers, self.work.behavior)
 
     def view(self) -> PageView:
+        submitted = self.work.submitted
         return PageView(
             self._presets,
             self._scaffold,
             dialogue=self.work.dialogue,
-            revealed=(),
-            status="待办",
+            answers_locked=submitted,
+            send_closed=submitted,
+            revealed=tuple(_revealed(question) for question in self.work.questions) if submitted else (),
+            status="已完成" if submitted else "待办",
         )
 
     def edit_answer(
@@ -75,6 +86,8 @@ class Session:
         text: str | None = None,
         selected: tuple[str, ...] | None = None,
     ) -> PageView:
+        if self.work.submitted:
+            raise Rejected("already submitted")
         self.work.edit(index, text=text, selected=selected)
         self._presets = tuple(self._decision.suggest(self.record))
         return self.view()
@@ -83,6 +96,8 @@ class Session:
         self.work.behavior = replace(self.work.behavior, dwell_seconds=seconds)
 
     def ask(self, question: str, source: HelpSource) -> PageView:
+        if self.work.submitted:
+            raise Rejected("already submitted")
         if question.strip() == "":
             return self.view()
         self.work.behavior = replace(
@@ -111,9 +126,25 @@ class Session:
         self.work.dialogue = self.work.dialogue + (DialogueTurn(question, source, scaffold),)
         return self.view()
 
+    def submit(self) -> PageView:
+        if self.work.submitted:
+            raise Rejected("already submitted")
+        self.work.submitted = True
+        self._catalog.mark_submitted(self.work.task_id)
+        self._presets = ()
+        return self.view()
+
     def _keep_existing_scaffold(self, question: str, source: HelpSource) -> PageView:
         self.work.dialogue = self.work.dialogue + (DialogueTurn(question, source, None),)
         return self.view()
+
+
+def _revealed(question) -> Revealed:
+    if isinstance(question, OpenQuestion):
+        return Revealed(question.answer, question.explanation)
+    if isinstance(question, TrueFalseQuestion):
+        return Revealed(question.answer, question.explanation)
+    return Revealed(question.answer, question.explanation)
 
 
 def _visible_scaffold(draft: ScaffoldDraft) -> Scaffold:

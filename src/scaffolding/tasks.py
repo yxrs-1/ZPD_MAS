@@ -132,6 +132,14 @@ class TaskCatalog:
             listed.append(ListedTask(task.task_id, status, tuple(_public(question) for question in task.questions)))
         return tuple(listed)
 
+    def mark_submitted(self, task_id: str) -> Task:
+        task = self.get(task_id)
+        if not task.started:
+            raise Rejected("cannot submit before start")
+        updated = replace(task, submitted=True)
+        self._tasks[task_id] = updated
+        return updated
+
     def start(self, task_id: str) -> StudentWork:
         task = self.get(task_id)
         if not task.published or task.started or task.questions == ():
