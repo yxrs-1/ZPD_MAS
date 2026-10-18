@@ -58,6 +58,20 @@ class Rejected(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class LessonRetrieval:
+    lesson_text: str
+    lesson_source: LessonSource
+    standard_text: str
+    standard_source: StandardSource
+
+
+@dataclass(frozen=True)
+class StageRetrieval:
+    standard_text: str
+    standard_source: StandardSource
+
+
 class KnowledgeBase:
     def __init__(self) -> None:
         self._lessons: dict[tuple[str, str, str], TextbookLesson] = {}
@@ -85,3 +99,18 @@ class KnowledgeBase:
 
     def standard_count(self) -> int:
         return len(self._standards)
+
+    def retrieve_lesson(self, version: str, volume: str, lesson: str) -> LessonRetrieval | None:
+        stored = self._lessons.get((version, volume, lesson))
+        if stored is None:
+            return None
+        standard = self._standards.get(stored.stage)
+        if standard is None:
+            return None
+        return LessonRetrieval(stored.text, stored.source(), standard.text, standard.source())
+
+    def retrieve_stage(self, stage: str) -> StageRetrieval | None:
+        standard = self._standards.get(stage)
+        if standard is None:
+            return None
+        return StageRetrieval(standard.text, standard.source())
