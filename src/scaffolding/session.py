@@ -99,6 +99,8 @@ def _visible_scaffold(draft: ScaffoldDraft) -> Scaffold:
     direct = tuple(
         asset
         for asset in draft.assets
-        if asset.kind.value in ASSET_KIND_VALUES and safe_filename(asset.filename)
+        if asset.kind.value in ASSET_KIND_VALUES
+        and safe_filename(asset.filename)
+        and asset.content.strip() != b""
     )
     return Scaffold(text=draft.text, assets=direct + assets_from_html(draft.html))
