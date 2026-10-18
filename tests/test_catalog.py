@@ -1,7 +1,7 @@
 import pytest
 
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
-from scaffolding.tasks import ListedQuestion, TaskCatalog
+from scaffolding.tasks import ListedQuestion, Rejected, TaskCatalog
 
 
 def _questions():
@@ -66,3 +66,19 @@ def test_empty_task_cannot_be_published_or_started():
         catalog.publish(task.task_id)
     with pytest.raises(Exception):
         catalog.start(task.task_id)
+
+
+def test_published_task_cannot_be_updated_to_no_questions():
+    catalog = TaskCatalog()
+    original = (OpenQuestion("写出组成", "覆盖五类组成"),)
+    task = catalog.create(original)
+    catalog.publish(task.task_id)
+
+    with pytest.raises(Rejected):
+        catalog.update(task.task_id, ())
+
+    stored = catalog.get(task.task_id)
+    assert stored.questions == original
+    listed = catalog.student_tasks()[0]
+    assert listed.status == "待办"
+    assert listed.questions == (ListedQuestion("写出组成", requirements="覆盖五类组成"),)

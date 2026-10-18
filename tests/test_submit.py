@@ -85,3 +85,18 @@ def test_submit_does_not_let_the_teacher_edit():
         catalog.update(session.work.task_id, (OpenQuestion("提交后改题", "不允许"),))
     catalog.delete(session.work.task_id)
     assert [item.task_id for item in catalog.student_tasks()] == [secret.task_id]
+
+
+def test_failed_submit_does_not_reveal_keys_or_lock_answers():
+    catalog, session, _secret = _session()
+    catalog.delete(session.work.task_id)
+
+    with pytest.raises(Exception):
+        session.submit()
+
+    assert session.work.submitted is False
+    assert session.view().revealed == ()
+    assert session.view().status == "待办"
+    assert session.view().answers_locked is False
+    session.edit_answer(1, text="删除后仍可改")
+    assert session.work.answers[1].text == "删除后仍可改"

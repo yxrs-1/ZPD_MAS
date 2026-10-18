@@ -107,6 +107,8 @@ class TaskCatalog:
         task = self.get(task_id)
         if task.started:
             raise Rejected("started tasks can only be deleted")
+        if task.published and questions == ():
+            raise Rejected("a published task needs a question")
         updated = replace(task, questions=questions)
         self._tasks[task_id] = updated
         return updated

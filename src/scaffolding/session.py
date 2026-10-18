@@ -129,8 +129,8 @@ class Session:
     def submit(self) -> PageView:
         if self.work.submitted:
             raise Rejected("already submitted")
-        self.work.submitted = True
         self._catalog.mark_submitted(self.work.task_id)
+        self.work.submitted = True
         self._presets = ()
         return self.view()
 
