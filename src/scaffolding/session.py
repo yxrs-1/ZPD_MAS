@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from scaffolding.agents import DecisionAgent, ScaffoldAgent, ScaffoldDraft
+from scaffolding.html_assets import assets_from_html, safe_filename
 from scaffolding.records import (
     ASSET_KIND_VALUES,
     SCAFFOLD_TYPE_VALUES,
@@ -64,5 +65,9 @@ class Session:
 
 
 def _visible_scaffold(draft: ScaffoldDraft) -> Scaffold:
-    assets = tuple(asset for asset in draft.assets if asset.kind.value in ASSET_KIND_VALUES)
-    return Scaffold(text=draft.text, assets=assets)
+    direct = tuple(
+        asset
+        for asset in draft.assets
+        if asset.kind.value in ASSET_KIND_VALUES and safe_filename(asset.filename)
+    )
+    return Scaffold(text=draft.text, assets=direct + assets_from_html(draft.html))
