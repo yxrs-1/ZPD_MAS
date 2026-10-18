@@ -1,13 +1,24 @@
 from dataclasses import dataclass
 
-from scaffolding.agents import DecisionAgent, ScaffoldAgent
-from scaffolding.records import Asset, TaskRecord
+from scaffolding.agents import DecisionAgent, ScaffoldAgent, ScaffoldDraft
+from scaffolding.records import (
+    ASSET_KIND_VALUES,
+    SCAFFOLD_TYPE_VALUES,
+    Asset,
+    Behavior,
+    HelpEvent,
+    HelpSource,
+    TaskRecord,
+)
 
 
 @dataclass(frozen=True)
 class Scaffold:
     text: str = ""
     assets: tuple[Asset, ...] = ()
+
+    def is_empty(self) -> bool:
+        return self.text.strip() == "" and len(self.assets) == 0
 
 
 @dataclass(frozen=True)
@@ -26,3 +37,32 @@ class Session:
 
     def view(self) -> PageView:
         return PageView(self._presets, self._scaffold)
+
+    def ask(self, question: str, source: HelpSource) -> PageView:
+        self.record = TaskRecord(
+            statement=self.record.statement,
+            answer=self.record.answer,
+            behavior=Behavior(
+                dwell_seconds=self.record.behavior.dwell_seconds,
+                helps=self.record.behavior.helps + (HelpEvent(text=question, source=source),),
+            ),
+        )
+        scaffold_type = self._decision.choose_type(self.record, question)
+        if scaffold_type not in SCAFFOLD_TYPE_VALUES:
+            return self.view()
+        draft = self._scaffold_agent.produce(
+            scaffold_type,
+            question,
+            self.record.statement,
+            self.record.answer,
+        )
+        scaffold = _visible_scaffold(draft)
+        if scaffold.is_empty():
+            return self.view()
+        self._scaffold = scaffold
+        return self.view()
+
+
+def _visible_scaffold(draft: ScaffoldDraft) -> Scaffold:
+    assets = tuple(asset for asset in draft.assets if asset.kind.value in ASSET_KIND_VALUES)
+    return Scaffold(text=draft.text, assets=assets)
