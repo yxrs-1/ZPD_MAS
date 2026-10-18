@@ -121,3 +121,11 @@ class OpenQuestion:
     def __post_init__(self) -> None:
         if not _filled(self.prompt) or not _filled(self.requirements):
             raise ValueError("open question needs a prompt and requirements")
+
+
+@dataclass(frozen=True)
+class ItemAnswer:
+    text: str = ""
+    selected: tuple[str, ...] = ()
+    text_revisions: tuple[str, ...] = ()
+    selected_revisions: tuple[tuple[str, ...], ...] = ()
