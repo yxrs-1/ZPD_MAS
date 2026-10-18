@@ -5,6 +5,7 @@ from scaffolding.html_assets import assets_from_html, safe_filename
 from scaffolding.records import (
     ASSET_KIND_VALUES,
     SCAFFOLD_TYPE_VALUES,
+    AnswerState,
     Asset,
     Behavior,
     HelpEvent,
@@ -38,6 +39,28 @@ class Session:
 
     def view(self) -> PageView:
         return PageView(self._presets, self._scaffold)
+
+    def edit_answer(self, content: str) -> PageView:
+        revisions = self.record.answer.revisions
+        if content != self.record.answer.content:
+            revisions = revisions + (self.record.answer.content,)
+        self.record = TaskRecord(
+            statement=self.record.statement,
+            answer=AnswerState(content=content, revisions=revisions),
+            behavior=self.record.behavior,
+        )
+        self._presets = tuple(self._decision.suggest(self.record))
+        return self.view()
+
+    def note_dwell(self, seconds: float) -> None:
+        self.record = TaskRecord(
+            statement=self.record.statement,
+            answer=self.record.answer,
+            behavior=Behavior(
+                dwell_seconds=seconds,
+                helps=self.record.behavior.helps,
+            ),
+        )
 
     def ask(self, question: str, source: HelpSource) -> PageView:
         if question.strip() == "":
