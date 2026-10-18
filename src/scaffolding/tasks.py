@@ -1,6 +1,6 @@
 from dataclasses import dataclass, replace
 
-from scaffolding.records import ChoiceQuestion, ItemAnswer, OpenQuestion, SelectionMode, TrueFalseQuestion
+from scaffolding.records import Behavior, ChoiceQuestion, ItemAnswer, OpenQuestion, SelectionMode, TrueFalseQuestion
 
 Question = ChoiceQuestion | TrueFalseQuestion | OpenQuestion
 
@@ -68,6 +68,8 @@ class StudentWork:
         self.questions = questions
         self.answers = tuple(ItemAnswer() for _ in questions)
         self.submitted = False
+        self.behavior = Behavior()
+        self.dialogue: tuple = ()
 
     def edit(self, index: int, *, text: str | None = None, selected: tuple[str, ...] | None = None) -> None:
         if self.submitted:

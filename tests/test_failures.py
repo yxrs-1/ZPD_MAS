@@ -1,17 +1,14 @@
 import pytest
 
 from scaffolding.agents import ScaffoldDraft
-from scaffolding.records import HelpSource, TaskRecord, TaskStatement
+from scaffolding.records import HelpSource, TaskRecord
 from scaffolding.scripted import ScriptedDecisionAgent, ScriptedScaffoldAgent
 from scaffolding.session import Session
+from tests.helpers import open_session
 
 
 def _session(decision: ScriptedDecisionAgent, scaffold_agent: ScriptedScaffoldAgent) -> Session:
-    return Session(
-        TaskRecord(statement=TaskStatement(prompt="判断说法")),
-        decision,
-        scaffold_agent,
-    )
+    return open_session(decision, scaffold_agent)
 
 
 def test_blank_question_does_not_call_either_agent():
@@ -77,7 +74,7 @@ def test_empty_answer_can_still_receive_a_scaffold():
 
     view = session.ask("题目要求是什么？", HelpSource.PRESET)
 
-    assert session.record.answer.content == ""
+    assert session.work.answers[0].selected == ()
     assert view.scaffold is not None
     assert view.scaffold.text == "解释：题目要求是什么？"
 

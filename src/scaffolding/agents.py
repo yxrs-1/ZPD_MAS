@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from scaffolding.records import AnswerState, Asset, TaskRecord, TaskStatement
+from scaffolding.records import Asset, ItemAnswer, TaskRecord
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,7 @@ class ScaffoldAgent(Protocol):
         self,
         scaffold_type: str,
         question: str,
-        statement: TaskStatement,
-        answer: AnswerState,
+        questions: tuple,
+        answers: tuple[ItemAnswer, ...],
     ) -> ScaffoldDraft:
         ...

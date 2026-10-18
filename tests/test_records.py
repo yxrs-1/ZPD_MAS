@@ -1,27 +1,9 @@
 from scaffolding.records import (
     ASSET_KIND_VALUES,
     SCAFFOLD_TYPE_VALUES,
-    AnswerState,
-    Behavior,
     HelpEvent,
     HelpSource,
-    TaskRecord,
-    TaskStatement,
 )
-
-
-def test_record_keeps_the_whole_task_and_an_empty_answer():
-    record = TaskRecord(
-        statement=TaskStatement(
-            prompt="完成作品并判断说法",
-            choices=("正确", "错误"),
-            requirements="写出组成说明",
-        )
-    )
-
-    assert record.answer == AnswerState()
-    assert record.behavior == Behavior()
-    assert record.statement.choices == ("正确", "错误")
 
 
 def test_help_event_records_the_verbatim_question_and_its_source():

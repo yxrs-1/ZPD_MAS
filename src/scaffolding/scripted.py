@@ -30,13 +30,13 @@ class ScriptedScaffoldAgent:
         self.error = error
         self.calls: list[dict[str, object]] = []
 
-    def produce(self, scaffold_type: str, question: str, statement: object, answer: object) -> ScaffoldDraft:
+    def produce(self, scaffold_type: str, question: str, questions: tuple, answers: tuple) -> ScaffoldDraft:
         self.calls.append(
             {
                 "scaffold_type": scaffold_type,
                 "question": question,
-                "statement": statement,
-                "answer": answer,
+                "questions": questions,
+                "answers": answers,
             }
         )
         if self.error is not None:

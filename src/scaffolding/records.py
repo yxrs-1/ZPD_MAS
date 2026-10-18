@@ -30,19 +30,6 @@ ASSET_KIND_VALUES = frozenset(item.value for item in AssetKind)
 
 
 @dataclass(frozen=True)
-class TaskStatement:
-    prompt: str
-    choices: tuple[str, ...] = ()
-    requirements: str = ""
-
-
-@dataclass(frozen=True)
-class AnswerState:
-    content: str = ""
-    revisions: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
 class HelpEvent:
     text: str
     source: HelpSource
@@ -52,13 +39,6 @@ class HelpEvent:
 class Behavior:
     dwell_seconds: float = 0
     helps: tuple[HelpEvent, ...] = ()
-
-
-@dataclass(frozen=True)
-class TaskRecord:
-    statement: TaskStatement
-    answer: AnswerState = AnswerState()
-    behavior: Behavior = Behavior()
 
 
 @dataclass(frozen=True)
@@ -129,3 +109,10 @@ class ItemAnswer:
     selected: tuple[str, ...] = ()
     text_revisions: tuple[str, ...] = ()
     selected_revisions: tuple[tuple[str, ...], ...] = ()
+
+
+@dataclass(frozen=True)
+class TaskRecord:
+    questions: tuple[ChoiceQuestion | TrueFalseQuestion | OpenQuestion, ...]
+    answers: tuple[ItemAnswer, ...]
+    behavior: Behavior = Behavior()

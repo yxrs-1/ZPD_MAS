@@ -2,9 +2,10 @@ from pathlib import Path
 
 from scaffolding.agents import ScaffoldDraft
 from scaffolding.html_assets import assets_from_html, export_assets, safe_filename
-from scaffolding.records import Asset, AssetKind, HelpSource, TaskRecord, TaskStatement
+from scaffolding.records import Asset, AssetKind, HelpSource
 from scaffolding.scripted import ScriptedDecisionAgent, ScriptedScaffoldAgent
-from scaffolding.session import Scaffold, Session
+from scaffolding.session import Scaffold
+from tests.helpers import open_session
 
 
 def test_html_keeps_only_the_four_asset_kinds():
@@ -27,10 +28,10 @@ def test_html_keeps_only_the_four_asset_kinds():
 def test_export_writes_asset_files_and_not_the_html_page(tmp_path: Path):
     html = '<p>整页</p><asset kind="图片素材" name="figure.png">img</asset>'
     draft = ScaffoldDraft(text="提示：看这张图", html=html, assets=(Asset(AssetKind.STRUCTURE, "layout.svg", b"box"),))
-    session = Session(
-        TaskRecord(statement=TaskStatement(prompt="完成作品")),
+    session = open_session(
         ScriptedDecisionAgent(presets=("看哪？",), scaffold_type="提示"),
         ScriptedScaffoldAgent(draft),
+        prompt="完成作品",
     )
 
     view = session.ask("看哪？", HelpSource.PRESET)
@@ -102,8 +103,7 @@ def test_whitespace_only_asset_body_is_dropped():
 
 
 def test_empty_direct_asset_does_not_make_scaffold_visible():
-    session = Session(
-        TaskRecord(statement=TaskStatement(prompt="完成作品")),
+    session = open_session(
         ScriptedDecisionAgent(presets=("看哪？",), scaffold_type="提示"),
         ScriptedScaffoldAgent(
             ScaffoldDraft(
@@ -112,6 +112,7 @@ def test_empty_direct_asset_does_not_make_scaffold_visible():
                 html='<asset kind="思维导图" name="map.svg">\n</asset>',
             )
         ),
+        prompt="完成作品",
     )
 
     view = session.ask("看哪？", HelpSource.PRESET)
