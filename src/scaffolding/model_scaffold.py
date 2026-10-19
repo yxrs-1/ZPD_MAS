@@ -100,3 +100,11 @@ def _text_traces(answer: ItemAnswer) -> str:
     if not answer.text_revisions:
         return "修改痕迹："
     return "修改痕迹：\n" + "\n".join(answer.text_revisions)
+
+
+class ModelScaffoldAgent:
+    def __init__(self, complete) -> None:
+        self._complete = complete
+
+    def produce(self, scaffold_type: str, question: str, questions: tuple, answers: tuple) -> ScaffoldDraft:
+        return parse_scaffold(self._complete(build_messages(scaffold_type, question, questions, answers)))
