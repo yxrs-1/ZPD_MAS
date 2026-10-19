@@ -54,6 +54,14 @@ class StageOrigin:
     stage: str
 
 
+class Rejected(Exception):
+    pass
+
+
+def _usable_count(value: object) -> bool:
+    return type(value) is int and value >= 0
+
+
 class TaskGeneration:
     def __init__(self, objectives: ObjectiveCatalog, tasks: TaskCatalog, generator) -> None:
         self._objectives = objectives
@@ -95,8 +103,14 @@ class TaskGeneration:
         true_false: int,
         open_ended: int,
     ) -> Task:
+        if not all(_usable_count(value) for value in (single, multiple, true_false, open_ended)):
+            raise Rejected("counts must be zero or a positive integer")
+        if (single, multiple, true_false, open_ended) == (0, 0, 0, 0) or not objectives:
+            raise Rejected("there is no objective record to generate from")
         counts = QuestionCounts(single, multiple, true_false, open_ended)
         ordered = arrange_questions(self._generator.generate(counts, objectives), counts)
+        if ordered is None:
+            raise Rejected("generated questions do not match the requested counts")
         task = self._tasks.create(ordered)
         self._origins[task.task_id] = origin
         return task
