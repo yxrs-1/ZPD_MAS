@@ -1,6 +1,8 @@
 import json
 
-from scaffolding.generation import Rejected
+from scaffolding.generation import QuestionCounts, Rejected
+from scaffolding.knowledge import LessonSource
+from scaffolding.objectives import Objective
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 
 
@@ -88,3 +90,41 @@ def _opened(value: object) -> tuple[OpenQuestion, ...]:
         except ValueError as error:
             raise Rejected("model reply is not the question JSON") from error
     return tuple(questions)
+
+
+SYSTEM_MESSAGE = (
+    "你是高中信息科技教师。只回一份 JSON 对象，不要代码块，不要其他文字。\n"
+    "JSON 有且只有四个键：单选、多选、判断、综合。每个键的值都是数组。某一类数量是 0 时，那个数组是空的。\n"
+    "单选和多选的每一项都有且只有这些键：题目、选项、参考答案、解析。"
+    "选项正好四个，互不相同，且都不能为空白。选项和参考答案是字符串数组。"
+    "单选的参考答案是其中一个选项。多选的参考答案至少包含一个选项，且每一项都在选项里、互不相同。"
+    "题目和解析都不能为空白。\n"
+    "判断的每一项都有且只有这些键：题目、参考答案、解析。参考答案是「正确」或「错误」。题目和解析都不能为空白。\n"
+    "综合的每一项都有且只有这些键：题目、作答要求、参考答案、解析。题目和作答要求都不能为空白。参考答案和解析可以空着。\n"
+    "空白不算已填写。"
+)
+
+
+def build_messages(counts: QuestionCounts, objectives: tuple[Objective, ...]) -> tuple[dict[str, str], dict[str, str]]:
+    lines = [
+        f"单选：{counts.single}",
+        f"多选：{counts.multiple}",
+        f"判断：{counts.true_false}",
+        f"综合：{counts.open_ended}",
+        "",
+        "目标：",
+    ]
+    for number, objective in enumerate(objectives, start=1):
+        lines.append(f"{number}. 维度：{objective.dimension}")
+        lines.append(f"表述：{objective.statement}")
+        lines.append(f"来源：{_source_text(objective.source)}")
+    return (
+        {"role": "system", "content": SYSTEM_MESSAGE},
+        {"role": "user", "content": "\n".join(lines)},
+    )
+
+
+def _source_text(source: object) -> str:
+    if isinstance(source, LessonSource):
+        return f"版本 {source.version}，册次 {source.volume}，课时 {source.lesson}，学段 {source.stage}，页码 {source.pages}"
+    return f"名称 {source.name}，学段 {source.stage}，条款号 {source.clauses}，现行课标"
