@@ -1,4 +1,5 @@
 import json
+import os
 
 from scaffolding.generation import QuestionCounts, Rejected
 from scaffolding.knowledge import LessonSource
@@ -139,3 +140,47 @@ class ModelQuestionGenerator:
         if not isinstance(text, str):
             raise Rejected("model reply is not the question JSON")
         return parse_questions(text)
+
+
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+
+
+def deepseek_complete(messages, *, post, api_key: str | None = None) -> str:
+    key = os.environ.get("DEEPSEEK_API_KEY") if api_key is None else api_key
+    if key is None or key.strip() == "":
+        raise Rejected("DeepSeek API key is missing")
+    payload = {
+        "model": "deepseek-flash",
+        "messages": [dict(message) for message in messages],
+        "stream": False,
+        "thinking": {"type": "disabled"},
+    }
+    try:
+        status, response = post(
+            DEEPSEEK_URL,
+            {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            payload,
+        )
+    except Rejected:
+        raise
+    except Exception as error:
+        raise Rejected("DeepSeek request failed") from error
+    content = _content(status, response)
+    if content is None:
+        raise Rejected("DeepSeek reply has no content")
+    return content
+
+
+def _content(status: object, response: object) -> str | None:
+    if status != 200 or not isinstance(response, dict):
+        return None
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return None
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    if type(content) is not str:
+        return None
+    return content
