@@ -60,6 +60,37 @@ class ObjectiveCatalog:
     def stage_objectives(self, stage: str) -> tuple[Objective, ...]:
         return self._stages.get(stage, ())
 
+    def edit_statement(self, objective_id: str, statement: str) -> Objective:
+        located = self._locate(objective_id)
+        if located is None:
+            raise Rejected("objective was not found")
+        if not _filled(statement):
+            raise Rejected("objective statement must be filled")
+        store, key, index = located
+        current = store[key][index]
+        updated = Objective(current.objective_id, current.dimension, statement, current.source)
+        store[key] = store[key][:index] + (updated,) + store[key][index + 1 :]
+        return updated
+
+    def delete(self, objective_id: str) -> None:
+        located = self._locate(objective_id)
+        if located is None:
+            raise Rejected("objective was not found")
+        store, key, index = located
+        remaining = store[key][:index] + store[key][index + 1 :]
+        if remaining:
+            store[key] = remaining
+        else:
+            del store[key]
+
+    def _locate(self, objective_id: str):
+        for store in (self._lessons, self._stages):
+            for key, objectives in store.items():
+                for index, objective in enumerate(objectives):
+                    if objective.objective_id == objective_id:
+                        return store, key, index
+        return None
+
     def _save(self, store: dict, key: object, retrieval: LessonRetrieval | StageRetrieval | None) -> tuple[Objective, ...]:
         if retrieval is None:
             return ()
