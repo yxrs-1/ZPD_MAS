@@ -128,3 +128,14 @@ def _source_text(source: object) -> str:
     if isinstance(source, LessonSource):
         return f"版本 {source.version}，册次 {source.volume}，课时 {source.lesson}，学段 {source.stage}，页码 {source.pages}"
     return f"名称 {source.name}，学段 {source.stage}，条款号 {source.clauses}，现行课标"
+
+
+class ModelQuestionGenerator:
+    def __init__(self, complete) -> None:
+        self._complete = complete
+
+    def generate(self, counts: QuestionCounts, objectives: tuple) -> tuple:
+        text = self._complete(build_messages(counts, objectives))
+        if not isinstance(text, str):
+            raise Rejected("model reply is not the question JSON")
+        return parse_questions(text)
