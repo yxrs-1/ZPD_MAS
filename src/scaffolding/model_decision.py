@@ -132,3 +132,14 @@ def _text_traces(answer: ItemAnswer) -> str:
     if not answer.text_revisions:
         return "修改痕迹："
     return "修改痕迹：\n" + "\n".join(answer.text_revisions)
+
+
+class ModelDecisionAgent:
+    def __init__(self, complete) -> None:
+        self._complete = complete
+
+    def suggest(self, record: TaskRecord) -> tuple[str, ...]:
+        return parse_presets(self._complete(build_preset_messages(record)))
+
+    def choose_type(self, record: TaskRecord, question: str) -> str:
+        return parse_scaffold_type(self._complete(build_type_messages(record, question)))
