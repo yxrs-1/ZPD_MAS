@@ -94,3 +94,11 @@ def build_messages(retrieval: LessonRetrieval | StageRetrieval) -> tuple[dict[st
         + "，现行课标"
     )
     return ({"role": "system", "content": _STAGE_SYSTEM}, {"role": "user", "content": content})
+
+
+class ModelObjectiveExtractor:
+    def __init__(self, complete) -> None:
+        self._complete = complete
+
+    def extract(self, retrieval: LessonRetrieval | StageRetrieval) -> tuple[ObjectiveDraft, ...]:
+        return parse_objectives(self._complete(build_messages(retrieval)), retrieval)
