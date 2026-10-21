@@ -14,13 +14,13 @@ def _valid_fields():
         "prompt-0": "选出<人员>",
         "option-0-0": "人员",
         "option-0-1": "<硬件>",
-        "selected-0": "人员",
+        "selected-0": "0",
         "explanation-0": "选择依据",
         "kind-1": "多选",
         "prompt-1": "选出组成",
         "option-1-0": "人员",
         "option-1-1": "硬件",
-        "selected-1": ["人员", "硬件"],
+        "selected-1": ["0", "1"],
         "explanation-1": "多选依据",
         "kind-2": "判断",
         "prompt-2": "判断说法",
@@ -58,6 +58,8 @@ def test_saving_a_valid_draft_updates_the_catalog_and_clears_the_draft():
     assert isinstance(questions[3], OpenQuestion)
     assert questions[3].answer == ""
     assert questions[3].explanation == ""
+    hidden_save = '<button type="submit" name="action" value="save" hidden>保存</button>'
+    assert html.index(hidden_save) < html.index('value="down-option:')
 
 
 def test_an_invalid_question_keeps_the_catalog_and_the_draft():
@@ -69,7 +71,7 @@ def test_an_invalid_question_keeps_the_catalog_and_the_draft():
         "prompt-0": "   ",
         "option-0-0": "人员",
         "option-0-1": "硬件",
-        "selected-0": "人员",
+        "selected-0": "0",
         "explanation-0": "选择依据",
         "action": "save",
     }))
@@ -87,14 +89,50 @@ def test_a_removed_option_that_is_still_selected_is_rejected():
     html = body_text(_post(page, "task-1", **{
         "kind-0": "单选",
         "prompt-0": "选出人员",
+        "option-0-0": "人员",
+        "option-0-1": "硬件",
+        "selected-0": "0",
+        "explanation-0": "选择依据",
+        "action": "delete-option:0:0",
+    }))
+
+    draft = page.drafts["task-1"][0]
+    assert "人员" not in draft.options
+    assert "人员" in draft.selected
+    assert '<input type="hidden" name="selected-0" value="人员">' in html
+
+    saved = body_text(_post(page, "task-1", **{
+        "kind-0": "单选",
+        "prompt-0": "选出人员",
         "option-0-0": "硬件",
         "selected-0": "人员",
         "explanation-0": "选择依据",
         "action": "save",
     }))
 
+    assert "题目不合格，原任务保持不变" in saved
     assert page.catalog.get("task-1").questions == ()
-    assert "题目不合格，原任务保持不变" in html
+    assert "task-1" in page.drafts
+
+
+def test_saving_maps_a_choice_index_to_the_edited_option_text():
+    page = TeacherPage(TaskCatalog())
+    page.create_task()
+
+    html = body_text(_post(page, "task-1", **{
+        "kind-0": "单选",
+        "prompt-0": "选出人员",
+        "option-0-0": "改后的选项",
+        "option-0-1": "硬件",
+        "selected-0": "0",
+        "explanation-0": "选择依据",
+        "action": "save",
+    }))
+
+    question = page.catalog.get("task-1").questions[0]
+    assert question.answer == ("改后的选项",)
+    assert 'type="radio" name="selected-0" value="0"' in html
+    assert 'name="selected-0" value="改后的选项"' not in html
 
 
 def test_an_unpublished_task_can_be_saved_with_no_questions():

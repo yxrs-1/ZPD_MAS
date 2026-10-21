@@ -118,6 +118,7 @@ def _render(page: TeacherPage, task_id: str, message: str = "") -> str:
     questions, has_draft = _shown(page, task_id)
     action = "/tasks/" + quote(task_id, safe="")
     parts.append("<form method=\"post\" action=\"" + action + "\">")
+    parts.append("<button type=\"submit\" name=\"action\" value=\"save\" hidden>保存</button>")
     for index, item in enumerate(questions):
         parts.append(_editor(index, item, len(questions)))
     for kind in KINDS:
@@ -168,7 +169,7 @@ def _editor(index: int, item: DraftQuestion, count: int) -> str:
             )
             body += (
                 "<input type=\"" + input_type + "\" name=\"selected-" + name
-                + "\" value=\"" + escape(option) + "\"" + checked + ">"
+                + "\" value=\"" + str(option_index) + "\"" + checked + ">"
             )
             if option_index > 0:
                 body += (
@@ -184,6 +185,12 @@ def _editor(index: int, item: DraftQuestion, count: int) -> str:
                 "<button type=\"submit\" name=\"action\" value=\"delete-option:"
                 + option_name + "\">删除选项</button>"
             )
+        for text in item.selected:
+            if text not in item.options:
+                body += (
+                    "<input type=\"hidden\" name=\"selected-" + name
+                    + "\" value=\"" + escape(text) + "\">"
+                )
         body += "<button type=\"submit\" name=\"action\" value=\"add-option:" + name + "\">增加选项</button>"
     elif item.kind == "判断":
         for choice in ("正确", "错误"):
@@ -258,12 +265,18 @@ def _draft_from_fields(fields: dict) -> tuple:
             fields["option-" + str(index) + "-" + str(option_id)][-1]
             for option_id in sorted(set(option_ids))
         )
+        selected = tuple(fields.get("selected-" + str(index), ()))
+        if kind in ("单选", "多选"):
+            selected = tuple(
+                options[int(token)] if token.isdigit() and int(token) < len(options) else token
+                for token in selected
+            )
         items.append(DraftQuestion(
             kind,
             fields.get("prompt-" + str(index), [""])[-1],
             options,
             fields.get("requirements-" + str(index), [""])[-1],
-            tuple(fields.get("selected-" + str(index), ())),
+            selected,
             fields.get("answer-" + str(index), [""])[-1],
             fields.get("explanation-" + str(index), [""])[-1],
         ))
