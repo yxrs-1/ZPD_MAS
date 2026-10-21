@@ -256,8 +256,6 @@ def _apply_action(draft: tuple, action: str) -> tuple:
     head = parts[0]
     if head == "add" and len(parts) == 2 and parts[1] in KINDS:
         kind = parts[1]
-        if kind == "多选":
-            return draft + (DraftQuestion(kind, options=("",)),)
         return draft + (DraftQuestion(kind),)
     if head == "delete" and len(parts) == 2 and parts[1].isdigit():
         index = int(parts[1])

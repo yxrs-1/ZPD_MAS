@@ -20,8 +20,17 @@ def test_adding_a_question_keeps_a_draft_and_shows_only_that_kinds_fields():
     assert page.catalog.get("task-1").questions == ()
 
     multiple = _post(page, "task-1", **{"kind-0": "单选", "prompt-0": "第一", "action": "add:多选"})
-    assert 'type="checkbox"' in body_text(multiple)
-    assert 'value="第一"' in body_text(multiple)
+    multiple_html = body_text(multiple)
+    assert 'value="多选"' in multiple_html
+    assert 'value="add-option:1"' in multiple_html
+    assert 'type="checkbox"' not in multiple_html
+    assert 'value="第一"' in multiple_html
+
+    with_option = _post(page, "task-1", **{
+        "kind-0": "单选", "prompt-0": "第一", "kind-1": "多选",
+        "action": "add-option:1",
+    })
+    assert 'type="checkbox"' in body_text(with_option)
 
     judgement = _post(page, "task-1", **{
         "kind-0": "单选", "prompt-0": "第一", "kind-1": "多选", "action": "add:判断",
