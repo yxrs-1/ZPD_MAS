@@ -2,6 +2,9 @@ from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+from scaffolding.generation import LessonOrigin, StageOrigin
+from scaffolding.knowledge import KnowledgeBase, LessonRetrieval, LessonSource
+from scaffolding.objectives import ObjectiveCatalog, Rejected as ObjectiveRejected
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 
 
@@ -26,11 +29,21 @@ class PageResponse:
     body: bytes
 
 
+class _EmptyExtractor:
+    def extract(self, retrieval):
+        return ()
+
+
 class TeacherPage:
-    def __init__(self, catalog, prefix: str = "") -> None:
+    def __init__(self, catalog, prefix: str = "", *, knowledge=None, objectives=None, generation=None) -> None:
         self.catalog = catalog
         self.drafts = {}
         self.prefix = prefix
+        self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
+        self.objectives = (
+            objectives if objectives is not None else ObjectiveCatalog(self.knowledge, _EmptyExtractor())
+        )
+        self.generation = generation
 
     def list_tasks(self) -> str:
         items = []
@@ -43,10 +56,28 @@ class TeacherPage:
         body = (
             "<h1>任务列表</h1><form method=\"post\" action=\""
             + _with_prefix(self.prefix, "/tasks") + "\">"
-            + "<button type=\"submit\">新建</button></form><ul>"
+            + "<button type=\"submit\">新建</button></form>"
+            + "<a href=\"" + _with_prefix(self.prefix, "/objectives") + "\">目标</a><ul>"
             + "".join(items) + "</ul>"
         )
         return _document(body)
+
+    def open_objectives(self, message: str = "") -> str:
+        return _render_objectives(self, None, message)
+
+    def apply_objectives(self, fields, action: str) -> str:
+        if action not in ("查看", "提炼", "修改", "删除"):
+            return self.open_objectives()
+        query = _objective_query(fields)
+        if query is None:
+            return self.open_objectives("先填完整再查询")
+        if action == "提炼":
+            return _extract_objectives(self, query)
+        if action == "修改":
+            return _edit_objective(self, query, fields)
+        if action == "删除":
+            return _delete_objective(self, query, fields)
+        return _render_objectives(self, query, "")
 
     def create_task(self) -> str:
         task = self.catalog.create(())
@@ -400,6 +431,210 @@ def _map_choice(draft: tuple, index: int, change) -> tuple:
     return tuple(items)
 
 
+def _filled(value: str) -> bool:
+    return value.strip() != ""
+
+
+def _objective_query(fields):
+    mode = fields.get("mode", [""])[-1]
+    if mode == "课时":
+        version = fields.get("version", [""])[-1]
+        volume = fields.get("volume", [""])[-1]
+        lesson = fields.get("lesson", [""])[-1]
+        if not all(_filled(value) for value in (version, volume, lesson)):
+            return None
+        return ("课时", version, volume, lesson)
+    if mode == "学段":
+        stage = fields.get("stage", [""])[-1]
+        if not _filled(stage):
+            return None
+        return ("学段", stage)
+    return None
+
+
+def _retrieve(page, query):
+    if query[0] == "课时":
+        return page.knowledge.retrieve_lesson(query[1], query[2], query[3])
+    return page.knowledge.retrieve_stage(query[1])
+
+
+def _saved(page, query):
+    if query[0] == "课时":
+        return page.objectives.lesson_objectives(query[1], query[2], query[3])
+    return page.objectives.stage_objectives(query[1])
+
+
+def _source_text(source) -> str:
+    if isinstance(source, LessonSource):
+        return (
+            "版本：" + source.version
+            + " 册次：" + source.volume
+            + " 课时：" + source.lesson
+            + " 学段：" + source.stage
+            + " 页码：" + source.pages
+        )
+    return (
+        "名称：" + source.name
+        + " 学段：" + source.stage
+        + " 条款号：" + source.clauses
+        + " 现行"
+    )
+
+
+def _query_fields(query):
+    version = volume = lesson = stage = ""
+    mode = "" if query is None else query[0]
+    if query is not None and query[0] == "课时":
+        version, volume, lesson = query[1], query[2], query[3]
+    if query is not None and query[0] == "学段":
+        stage = query[1]
+    checked_lesson = " checked" if mode == "课时" else ""
+    checked_stage = " checked" if mode == "学段" else ""
+    return mode, version, volume, lesson, stage, checked_lesson, checked_stage
+
+
+def _query_form(page, query, offer_extract: bool) -> str:
+    _mode, version, volume, lesson, stage, checked_lesson, checked_stage = _query_fields(query)
+    action = _with_prefix(page.prefix, "/objectives")
+    body = (
+        "<form method=\"post\" action=\"" + action + "\">"
+        + "<label><input type=\"radio\" name=\"mode\" value=\"课时\"" + checked_lesson + ">课时</label>"
+        + "<label><input type=\"radio\" name=\"mode\" value=\"学段\"" + checked_stage + ">学段</label>"
+        + "<input name=\"version\" value=\"" + escape(version) + "\">"
+        + "<input name=\"volume\" value=\"" + escape(volume) + "\">"
+        + "<input name=\"lesson\" value=\"" + escape(lesson) + "\">"
+        + "<input name=\"stage\" value=\"" + escape(stage) + "\">"
+        + "<button type=\"submit\" name=\"action\" value=\"查看\">查看</button>"
+    )
+    if offer_extract:
+        body += "<button type=\"submit\" name=\"action\" value=\"提炼\">提炼</button>"
+    return body + "</form>"
+
+
+def _retrieval_html(retrieval) -> str:
+    if isinstance(retrieval, LessonRetrieval):
+        return (
+            "<section><h2>课时原文</h2><p>" + escape(retrieval.lesson_text) + "</p>"
+            + "<p>教材来源：" + escape(_source_text(retrieval.lesson_source)) + "</p>"
+            + "<h2>课标全文</h2><p>" + escape(retrieval.standard_text) + "</p>"
+            + "<p>课标来源：" + escape(_source_text(retrieval.standard_source)) + "</p></section>"
+        )
+    if retrieval is None:
+        return ""
+    return (
+        "<section><h2>课标全文</h2><p>" + escape(retrieval.standard_text) + "</p>"
+        + "<p>课标来源：" + escape(_source_text(retrieval.standard_source)) + "</p></section>"
+    )
+
+
+def _render_objectives(page, query, message: str) -> str:
+    retrieval = None if query is None else _retrieve(page, query)
+    objectives = () if query is None else _saved(page, query)
+    if retrieval is None and query is not None and message == "":
+        message = "没有检索到资料"
+    parts = ["<h1>目标</h1>"]
+    if message:
+        parts.append("<p>" + escape(message) + "</p>")
+    parts.append(_query_form(page, query, offer_extract=query is not None and objectives == ()))
+    parts.append(_retrieval_html(retrieval))
+    action = _with_prefix(page.prefix, "/objectives")
+    for item in objectives:
+        hidden = "" if query is None else _hidden_query(query)
+        parts.append(
+            "<article><p>" + escape(item.objective_id) + "</p><p>"
+            + escape(item.dimension) + "</p><p>" + escape(item.statement) + "</p><p>"
+            + escape(_source_text(item.source)) + "</p>"
+            + "<form method=\"post\" action=\"" + action + "\">" + hidden
+            + "<input type=\"hidden\" name=\"objective\" value=\"" + escape(item.objective_id) + "\">"
+            + "<input name=\"statement\" value=\"" + escape(item.statement) + "\">"
+            + "<button type=\"submit\" name=\"action\" value=\"修改\">修改表述</button></form>"
+            + "<form method=\"post\" action=\"" + action + "\">" + hidden
+            + "<input type=\"hidden\" name=\"objective\" value=\"" + escape(item.objective_id) + "\">"
+            + "<button type=\"submit\" name=\"action\" value=\"删除\">删除</button></form></article>"
+        )
+    parts.append(_task_links(page, query))
+    return _document("".join(parts))
+
+
+def _hidden_query(query) -> str:
+    mode, version, volume, lesson, stage, _checked_lesson, _checked_stage = _query_fields(query)
+    return (
+        "<input type=\"hidden\" name=\"mode\" value=\"" + escape(mode) + "\">"
+        + "<input type=\"hidden\" name=\"version\" value=\"" + escape(version) + "\">"
+        + "<input type=\"hidden\" name=\"volume\" value=\"" + escape(volume) + "\">"
+        + "<input type=\"hidden\" name=\"lesson\" value=\"" + escape(lesson) + "\">"
+        + "<input type=\"hidden\" name=\"stage\" value=\"" + escape(stage) + "\">"
+    )
+
+
+def _edit_objective(page, query, fields) -> str:
+    objective_id = fields.get("objective", [""])[-1]
+    statement = fields.get("statement", [""])[-1]
+    current = _saved(page, query)
+    if objective_id not in {item.objective_id for item in current}:
+        return _render_objectives(page, query, "目标不存在")
+    if not _filled(statement):
+        return _render_objectives(page, query, "表述不能为空")
+    try:
+        page.objectives.edit_statement(objective_id, statement)
+    except ObjectiveRejected:
+        return _render_objectives(page, query, "目标不存在")
+    return _render_objectives(page, query, "")
+
+
+def _delete_objective(page, query, fields) -> str:
+    objective_id = fields.get("objective", [""])[-1]
+    current = _saved(page, query)
+    if objective_id not in {item.objective_id for item in current}:
+        return _render_objectives(page, query, "目标不存在")
+    try:
+        page.objectives.delete(objective_id)
+    except ObjectiveRejected:
+        return _render_objectives(page, query, "目标不存在")
+    return _render_objectives(page, query, "")
+
+
+def _extract_objectives(page, query) -> str:
+    if _saved(page, query) != ():
+        return _render_objectives(page, query, "已有目标，不能再次提炼")
+    if _retrieve(page, query) is None:
+        return _render_objectives(page, query, "没有检索到资料")
+    try:
+        if query[0] == "课时":
+            saved = page.objectives.extract_lesson(query[1], query[2], query[3])
+        else:
+            saved = page.objectives.extract_stage(query[1])
+    except ObjectiveRejected:
+        if _saved(page, query) != ():
+            return _render_objectives(page, query, "已有目标，不能再次提炼")
+        return _render_objectives(page, query, "提炼失败，没有保存目标")
+    except Exception:
+        return _render_objectives(page, query, "提炼失败，没有保存目标")
+    if saved == ():
+        return _render_objectives(page, query, "没有留下可保存的目标")
+    return _render_objectives(page, query, "")
+
+
+def _task_links(page, query) -> str:
+    if page.generation is None or query is None:
+        return ""
+    items = []
+    for task in page.catalog._tasks.values():
+        origin = page.generation.origin(task.task_id)
+        matched = False
+        if query[0] == "课时":
+            matched = origin == LessonOrigin(query[1], query[2], query[3])
+        elif query[0] == "学段":
+            matched = origin == StageOrigin(query[1])
+        if not matched:
+            continue
+        href = _with_prefix(page.prefix, "/tasks/" + quote(task.task_id, safe=""))
+        items.append("<li><a href=\"" + href + "\">" + escape(task.task_id) + "</a></li>")
+    if items == []:
+        return ""
+    return "<ul>" + "".join(items) + "</ul>"
+
+
 def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageResponse:
     parts = [unquote(part) for part in urlsplit(path).path.split("/") if part]
     if method == "GET" and parts == []:
@@ -416,6 +651,12 @@ def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageRe
             fields = parse_qs(body, keep_blank_values=True)
             action = fields.get("action", [""])[-1]
             return _html(page.apply(task_id, fields, action))
+    if parts == ["objectives"] and method == "GET":
+        return _html(page.open_objectives())
+    if parts == ["objectives"] and method == "POST":
+        fields = parse_qs(body, keep_blank_values=True)
+        action = fields.get("action", [""])[-1]
+        return _html(page.apply_objectives(fields, action))
     return _html(_missing(), 404)
 
 
