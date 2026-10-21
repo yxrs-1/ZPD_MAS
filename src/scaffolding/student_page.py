@@ -108,7 +108,13 @@ class StudentPage:
         return session
 
     def _note_shown(self, session, task_id: str, now: float) -> None:
-        if task_id not in self.shown_at:
+        shown = self.shown_at.get(task_id)
+        if shown is None:
+            self.shown_at[task_id] = now
+            return
+        elapsed = now - shown
+        if elapsed > 0:
+            session.note_dwell(session.work.behavior.dwell_seconds + elapsed)
             self.shown_at[task_id] = now
 
 
