@@ -2,7 +2,7 @@ from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from scaffolding.knowledge import KnowledgeBase
+from scaffolding.knowledge import KnowledgeBase, LessonRetrieval, LessonSource
 from scaffolding.objectives import ObjectiveCatalog
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 
@@ -61,19 +61,16 @@ class TeacherPage:
         )
         return _document(body)
 
-    def open_objectives(self) -> str:
-        action = _with_prefix(self.prefix, "/objectives")
-        body = (
-            "<h1>目标</h1><form method=\"post\" action=\"" + action + "\">"
-            + "<label><input type=\"radio\" name=\"mode\" value=\"课时\">课时</label>"
-            + "<label><input type=\"radio\" name=\"mode\" value=\"学段\">学段</label>"
-            + "<input name=\"version\">"
-            + "<input name=\"volume\">"
-            + "<input name=\"lesson\">"
-            + "<input name=\"stage\">"
-            + "<button type=\"submit\" name=\"action\" value=\"查看\">查看</button></form>"
-        )
-        return _document(body)
+    def open_objectives(self, message: str = "") -> str:
+        return _render_objectives(self, None, message)
+
+    def apply_objectives(self, fields, action: str) -> str:
+        if action != "查看":
+            return self.open_objectives()
+        query = _objective_query(fields)
+        if query is None:
+            return self.open_objectives("先填完整再查询")
+        return _render_objectives(self, query, "")
 
     def create_task(self) -> str:
         task = self.catalog.create(())
@@ -427,6 +424,103 @@ def _map_choice(draft: tuple, index: int, change) -> tuple:
     return tuple(items)
 
 
+def _filled(value: str) -> bool:
+    return value.strip() != ""
+
+
+def _objective_query(fields):
+    mode = fields.get("mode", [""])[-1]
+    if mode == "课时":
+        version = fields.get("version", [""])[-1]
+        volume = fields.get("volume", [""])[-1]
+        lesson = fields.get("lesson", [""])[-1]
+        if not all(_filled(value) for value in (version, volume, lesson)):
+            return None
+        return ("课时", version, volume, lesson)
+    return None
+
+
+def _retrieve(page, query):
+    if query[0] == "课时":
+        return page.knowledge.retrieve_lesson(query[1], query[2], query[3])
+    return None
+
+
+def _saved(page, query):
+    if query[0] == "课时":
+        return page.objectives.lesson_objectives(query[1], query[2], query[3])
+    return ()
+
+
+def _source_text(source) -> str:
+    if isinstance(source, LessonSource):
+        return (
+            "版本：" + source.version
+            + " 册次：" + source.volume
+            + " 课时：" + source.lesson
+            + " 学段：" + source.stage
+            + " 页码：" + source.pages
+        )
+    return (
+        "名称：" + source.name
+        + " 学段：" + source.stage
+        + " 条款号：" + source.clauses
+        + " 现行"
+    )
+
+
+def _query_fields(query):
+    version = volume = lesson = stage = ""
+    mode = "" if query is None else query[0]
+    if query is not None and query[0] == "课时":
+        version, volume, lesson = query[1], query[2], query[3]
+    checked_lesson = " checked" if mode == "课时" else ""
+    checked_stage = " checked" if mode == "学段" else ""
+    return mode, version, volume, lesson, stage, checked_lesson, checked_stage
+
+
+def _query_form(page, query, offer_extract: bool) -> str:
+    _mode, version, volume, lesson, stage, checked_lesson, checked_stage = _query_fields(query)
+    action = _with_prefix(page.prefix, "/objectives")
+    body = (
+        "<form method=\"post\" action=\"" + action + "\">"
+        + "<label><input type=\"radio\" name=\"mode\" value=\"课时\"" + checked_lesson + ">课时</label>"
+        + "<label><input type=\"radio\" name=\"mode\" value=\"学段\"" + checked_stage + ">学段</label>"
+        + "<input name=\"version\" value=\"" + escape(version) + "\">"
+        + "<input name=\"volume\" value=\"" + escape(volume) + "\">"
+        + "<input name=\"lesson\" value=\"" + escape(lesson) + "\">"
+        + "<input name=\"stage\" value=\"" + escape(stage) + "\">"
+        + "<button type=\"submit\" name=\"action\" value=\"查看\">查看</button>"
+    )
+    if offer_extract:
+        body += "<button type=\"submit\" name=\"action\" value=\"提炼\">提炼</button>"
+    return body + "</form>"
+
+
+def _retrieval_html(retrieval) -> str:
+    if not isinstance(retrieval, LessonRetrieval):
+        return ""
+    return (
+        "<section><h2>课时原文</h2><p>" + escape(retrieval.lesson_text) + "</p>"
+        + "<p>教材来源：" + escape(_source_text(retrieval.lesson_source)) + "</p>"
+        + "<h2>课标全文</h2><p>" + escape(retrieval.standard_text) + "</p>"
+        + "<p>课标来源：" + escape(_source_text(retrieval.standard_source)) + "</p></section>"
+    )
+
+
+def _render_objectives(page, query, message: str) -> str:
+    retrieval = None if query is None else _retrieve(page, query)
+    objectives = () if query is None else _saved(page, query)
+    if retrieval is None and query is not None and message == "":
+        message = "没有检索到资料"
+    parts = ["<h1>目标</h1>"]
+    if message:
+        parts.append("<p>" + escape(message) + "</p>")
+    parts.append(_query_form(page, query, offer_extract=query is not None and objectives == ()))
+    parts.append(_retrieval_html(retrieval))
+    return _document("".join(parts))
+
+
 def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageResponse:
     parts = [unquote(part) for part in urlsplit(path).path.split("/") if part]
     if method == "GET" and parts == []:
@@ -446,7 +540,9 @@ def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageRe
     if parts == ["objectives"] and method == "GET":
         return _html(page.open_objectives())
     if parts == ["objectives"] and method == "POST":
-        return _html(page.open_objectives())
+        fields = parse_qs(body, keep_blank_values=True)
+        action = fields.get("action", [""])[-1]
+        return _html(page.apply_objectives(fields, action))
     return _html(_missing(), 404)
 
 
