@@ -153,29 +153,47 @@ def _render_session(session: Session) -> str:
         session.work.questions,
         session.work.answers,
         view.presets,
+        locked=view.answers_locked,
+        revealed=view.revealed,
         scaffold=view.scaffold,
         dialogue=view.dialogue,
+        send_closed=view.send_closed,
     )
 
 
-def _page(task_id, status, questions, answers, presets, scaffold=None, dialogue=()) -> str:
+def _page(
+    task_id,
+    status,
+    questions,
+    answers,
+    presets,
+    locked=False,
+    revealed=(),
+    scaffold=None,
+    dialogue=(),
+    send_closed=False,
+) -> str:
     parts = ["<h1>" + escape(task_id) + "</h1><p>" + escape(status) + "</p>"]
     action = "/tasks/" + quote(task_id, safe="") + "/answers"
     parts.append("<form method=\"post\" action=\"" + action + "\">")
     for index, question in enumerate(questions):
-        parts.append(_question(index, question, answers[index], locked=False))
-    parts.append("<button type=\"submit\">保存作答</button></form>")
-    if presets:
-        parts.append("<h2>预设提问</h2><ul>")
-        for preset in presets:
-            parts.append("<li>" + _ask_form(task_id, preset, HelpSource.PRESET.value) + "</li>")
-        parts.append("</ul>")
-    parts.append(_ask_form(task_id, "", HelpSource.OWN.value, own=True))
-    submit_action = "/tasks/" + quote(task_id, safe="") + "/submit"
-    parts.append(
-        "<form method=\"post\" action=\"" + submit_action + "\">"
-        + "<button type=\"submit\">提交</button></form>"
-    )
+        item = revealed[index] if revealed else None
+        parts.append(_question(index, question, answers[index], locked, item))
+    if not locked:
+        parts.append("<button type=\"submit\">保存作答</button>")
+    parts.append("</form>")
+    if not send_closed:
+        if presets:
+            parts.append("<h2>预设提问</h2><ul>")
+            for preset in presets:
+                parts.append("<li>" + _ask_form(task_id, preset, HelpSource.PRESET.value) + "</li>")
+            parts.append("</ul>")
+        parts.append(_ask_form(task_id, "", HelpSource.OWN.value, own=True))
+        submit_action = "/tasks/" + quote(task_id, safe="") + "/submit"
+        parts.append(
+            "<form method=\"post\" action=\"" + submit_action + "\">"
+            + "<button type=\"submit\">提交</button></form>"
+        )
     if scaffold is not None:
         parts.append("<h2>支架</h2>" + _scaffold_body(task_id, scaffold))
     if dialogue:
@@ -205,7 +223,7 @@ def _turn(task_id: str, turn) -> str:
     return "<article>" + body + "</article>"
 
 
-def _question(index: int, question, answer, locked: bool) -> str:
+def _question(index: int, question, answer, locked: bool, revealed=None) -> str:
     if isinstance(question, ChoiceQuestion):
         kind = question.selection.value
         choices = question.choices
@@ -243,6 +261,9 @@ def _question(index: int, question, answer, locked: bool) -> str:
             "<textarea name=\"text-" + str(index) + "\"" + disabled + ">"
             + escape(answer.text) + "</textarea>"
         )
+    if revealed is not None:
+        shown = revealed.answer if isinstance(revealed.answer, str) else "、".join(revealed.answer)
+        body += "<p>参考答案：" + escape(shown) + "</p><p>解析：" + escape(revealed.explanation) + "</p>"
     return body + "</section>"
 
 
@@ -282,6 +303,10 @@ def response_for(page: StudentPage, method: str, path: str, body: str, now: floa
             question = fields.get("question", [""])[-1]
             source = fields.get("source", [""])[-1]
             return _html_response(page.ask(task_id, question, source, now))
+        if method == "POST" and parts[2:] == ["submit"]:
+            if not _published(page, task_id):
+                return _html_response(_missing(), 404)
+            return _html_response(page.submit(task_id, now))
         if method == "GET" and len(parts) == 4 and parts[2] == "assets":
             found = page.asset(task_id, parts[3])
             if found is None:
