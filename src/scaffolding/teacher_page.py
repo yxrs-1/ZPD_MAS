@@ -387,3 +387,29 @@ def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageRe
             action = fields.get("action", [""])[-1]
             return _html(page.apply(task_id, fields, action))
     return _html(_missing(), 404)
+
+
+def serve(page: TeacherPage, port: int) -> None:
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self._respond()
+
+        def do_POST(self) -> None:
+            self._respond()
+
+        def _respond(self) -> None:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw = self.rfile.read(length).decode("utf-8")
+            response = response_for(page, self.command, self.path, raw)
+            self.send_response(response.status)
+            self.send_header("Content-Type", response.content_type)
+            self.send_header("Content-Length", str(len(response.body)))
+            self.end_headers()
+            self.wfile.write(response.body)
+
+        def log_message(self, *args) -> None:
+            return
+
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
