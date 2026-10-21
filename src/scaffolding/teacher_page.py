@@ -1,6 +1,6 @@
 from dataclasses import dataclass, replace
 from html import escape
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 
@@ -53,6 +53,12 @@ class TeacherPage:
     def open_task(self, task_id: str) -> str:
         if task_id not in self.catalog._tasks:
             return _missing()
+        return _render(self, task_id)
+
+    def apply(self, task_id: str, fields: dict, action: str) -> str:
+        if task_id not in self.catalog._tasks:
+            return _missing()
+        self.drafts[task_id] = _apply_action(_draft_from_fields(fields), action)
         return _render(self, task_id)
 
 
@@ -214,6 +220,111 @@ def _read_only(question) -> str:
     return body + "<p>参考答案：" + escape(answer) + "</p><p>解析：" + escape(explanation) + "</p></section>"
 
 
+def _draft_from_fields(fields: dict) -> tuple:
+    indexes = []
+    for key in fields:
+        if key.startswith("kind-") and key[5:].isdigit():
+            indexes.append(int(key[5:]))
+    items = []
+    for index in sorted(set(indexes)):
+        kind = fields["kind-" + str(index)][-1]
+        if kind not in KINDS:
+            continue
+        prefix = "option-" + str(index) + "-"
+        option_ids = []
+        for key in fields:
+            if key.startswith(prefix) and key[len(prefix):].isdigit():
+                option_ids.append(int(key[len(prefix):]))
+        options = tuple(
+            fields["option-" + str(index) + "-" + str(option_id)][-1]
+            for option_id in sorted(set(option_ids))
+        )
+        items.append(DraftQuestion(
+            kind,
+            fields.get("prompt-" + str(index), [""])[-1],
+            options,
+            fields.get("requirements-" + str(index), [""])[-1],
+            tuple(fields.get("selected-" + str(index), ())),
+            fields.get("answer-" + str(index), [""])[-1],
+            fields.get("explanation-" + str(index), [""])[-1],
+        ))
+    return tuple(items)
+
+
+def _apply_action(draft: tuple, action: str) -> tuple:
+    parts = action.split(":")
+    head = parts[0]
+    if head == "add" and len(parts) == 2 and parts[1] in KINDS:
+        kind = parts[1]
+        if kind == "多选":
+            return draft + (DraftQuestion(kind, options=("",)),)
+        return draft + (DraftQuestion(kind),)
+    if head == "delete" and len(parts) == 2 and parts[1].isdigit():
+        index = int(parts[1])
+        if 0 <= index < len(draft):
+            return draft[:index] + draft[index + 1:]
+        return draft
+    if head == "up" and len(parts) == 2 and parts[1].isdigit():
+        index = int(parts[1])
+        if 1 <= index < len(draft):
+            items = list(draft)
+            items[index - 1], items[index] = items[index], items[index - 1]
+            return tuple(items)
+        return draft
+    if head == "down" and len(parts) == 2 and parts[1].isdigit():
+        index = int(parts[1])
+        if 0 <= index < len(draft) - 1:
+            items = list(draft)
+            items[index + 1], items[index] = items[index], items[index + 1]
+            return tuple(items)
+        return draft
+    if head == "add-option" and len(parts) == 2 and parts[1].isdigit():
+        return _map_choice(draft, int(parts[1]), lambda question: replace(question, options=question.options + ("",)))
+    if head == "delete-option" and len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+        option_index = int(parts[2])
+
+        def remove(question):
+            if not 0 <= option_index < len(question.options):
+                return question
+            return replace(
+                question,
+                options=question.options[:option_index] + question.options[option_index + 1:],
+            )
+
+        return _map_choice(draft, int(parts[1]), remove)
+    if head == "up-option" and len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+        option_index = int(parts[2])
+
+        def move_up(question):
+            if not 1 <= option_index < len(question.options):
+                return question
+            items = list(question.options)
+            items[option_index - 1], items[option_index] = items[option_index], items[option_index - 1]
+            return replace(question, options=tuple(items))
+
+        return _map_choice(draft, int(parts[1]), move_up)
+    if head == "down-option" and len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+        option_index = int(parts[2])
+
+        def move_down(question):
+            if not 0 <= option_index < len(question.options) - 1:
+                return question
+            items = list(question.options)
+            items[option_index + 1], items[option_index] = items[option_index], items[option_index + 1]
+            return replace(question, options=tuple(items))
+
+        return _map_choice(draft, int(parts[1]), move_down)
+    return draft
+
+
+def _map_choice(draft: tuple, index: int, change) -> tuple:
+    if not 0 <= index < len(draft) or draft[index].kind not in ("单选", "多选"):
+        return draft
+    items = list(draft)
+    items[index] = change(draft[index])
+    return tuple(items)
+
+
 def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageResponse:
     parts = [unquote(part) for part in urlsplit(path).path.split("/") if part]
     if method == "GET" and parts == []:
@@ -226,4 +337,8 @@ def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageRe
             return _html(_missing(), 404)
         if method == "GET":
             return _html(page.open_task(task_id))
+        if method == "POST":
+            fields = parse_qs(body, keep_blank_values=True)
+            action = fields.get("action", [""])[-1]
+            return _html(page.apply(task_id, fields, action))
     return _html(_missing(), 404)
