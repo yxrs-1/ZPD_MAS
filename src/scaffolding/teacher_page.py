@@ -59,6 +59,8 @@ class TeacherPage:
         if task_id not in self.catalog._tasks:
             return _missing()
         self.drafts[task_id] = _apply_action(_draft_from_fields(fields), action)
+        if action == "save":
+            return _save(self, task_id)
         return _render(self, task_id)
 
 
@@ -313,6 +315,34 @@ def _apply_action(draft: tuple, action: str) -> tuple:
 
         return _map_choice(draft, int(parts[1]), move_down)
     return draft
+
+
+def _save(page: TeacherPage, task_id: str) -> str:
+    draft = page.drafts[task_id]
+    task = page.catalog.get(task_id)
+    if task.published and draft == ():
+        return _render(page, task_id, "已发布的任务至少留一题")
+    try:
+        questions = tuple(_to_question(item) for item in draft)
+    except ValueError:
+        return _render(page, task_id, "题目不合格，原任务保持不变")
+    page.catalog.update(task_id, questions)
+    del page.drafts[task_id]
+    return _render(page, task_id)
+
+
+def _to_question(item: DraftQuestion):
+    if item.kind == "单选":
+        return ChoiceQuestion(item.prompt, SelectionMode.SINGLE, item.options, item.selected, item.explanation)
+    if item.kind == "多选":
+        return ChoiceQuestion(item.prompt, SelectionMode.MULTIPLE, item.options, item.selected, item.explanation)
+    if item.kind == "判断":
+        if len(item.selected) != 1:
+            raise ValueError("true/false answer")
+        return TrueFalseQuestion(item.prompt, item.selected[0], item.explanation)
+    if item.kind == "综合":
+        return OpenQuestion(item.prompt, item.requirements, item.answer, item.explanation)
+    raise ValueError("unknown kind")
 
 
 def _map_choice(draft: tuple, index: int, change) -> tuple:
