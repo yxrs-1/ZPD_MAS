@@ -27,20 +27,22 @@ class PageResponse:
 
 
 class TeacherPage:
-    def __init__(self, catalog) -> None:
+    def __init__(self, catalog, prefix: str = "") -> None:
         self.catalog = catalog
         self.drafts = {}
+        self.prefix = prefix
 
     def list_tasks(self) -> str:
         items = []
         for task in self.catalog._tasks.values():
-            href = "/tasks/" + quote(task.task_id, safe="")
+            href = _with_prefix(self.prefix, "/tasks/" + quote(task.task_id, safe=""))
             items.append(
                 "<li><a href=\"" + href + "\">" + escape(task.task_id)
                 + "</a> " + escape(_fact(task)) + "</li>"
             )
         body = (
-            "<h1>任务列表</h1><form method=\"post\" action=\"/tasks\">"
+            "<h1>任务列表</h1><form method=\"post\" action=\""
+            + _with_prefix(self.prefix, "/tasks") + "\">"
             + "<button type=\"submit\">新建</button></form><ul>"
             + "".join(items) + "</ul>"
         )
@@ -81,6 +83,10 @@ class TeacherPage:
         return _render(self, task_id)
 
 
+def _with_prefix(prefix: str, path: str) -> str:
+    return prefix + path
+
+
 def _fact(task) -> str:
     if task.started:
         return "已开始"
@@ -109,14 +115,14 @@ def _render(page: TeacherPage, task_id: str, message: str = "") -> str:
     if task.started:
         for question in task.questions:
             parts.append(_read_only(question))
-        action = "/tasks/" + quote(task_id, safe="")
+        action = _with_prefix(page.prefix, "/tasks/" + quote(task_id, safe=""))
         parts.append(
             "<form method=\"post\" action=\"" + action + "\">"
             + "<button type=\"submit\" name=\"action\" value=\"delete\">删除</button></form>"
         )
         return _document("".join(parts))
     questions, has_draft = _shown(page, task_id)
-    action = "/tasks/" + quote(task_id, safe="")
+    action = _with_prefix(page.prefix, "/tasks/" + quote(task_id, safe=""))
     parts.append("<form method=\"post\" action=\"" + action + "\">")
     parts.append("<button type=\"submit\" name=\"action\" value=\"save\" hidden>保存</button>")
     for index, item in enumerate(questions):

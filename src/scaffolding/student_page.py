@@ -20,17 +20,18 @@ class PageResponse:
 
 
 class StudentPage:
-    def __init__(self, catalog, decision, scaffold_agent) -> None:
+    def __init__(self, catalog, decision, scaffold_agent, prefix: str = "") -> None:
         self.catalog = catalog
         self.decision = decision
         self.scaffold_agent = scaffold_agent
         self.sessions = {}
         self.shown_at = {}
+        self.prefix = prefix
 
     def todo(self) -> str:
         items = []
         for listed in self.catalog.student_tasks():
-            href = "/tasks/" + quote(listed.task_id, safe="")
+            href = _with_prefix(self.prefix, "/tasks/" + quote(listed.task_id, safe=""))
             items.append(
                 "<li><a href=\"" + href + "\">" + escape(listed.task_id)
                 + "</a> " + escape(listed.status) + "</li>"
@@ -44,7 +45,7 @@ class StudentPage:
         if session is None:
             return _render_work(self, task_id)
         self._note_shown(session, task_id, now)
-        return _render_session(session)
+        return _render_session(session, self.prefix)
 
     def edit_answer(self, task_id: str, index: int, *, text: str | None = None, selected: tuple[str, ...] | None = None, now: float) -> str:
         if not _published(self, task_id):
@@ -57,7 +58,7 @@ class StudentPage:
             session.edit_answer(index, text=text, selected=selected)
         except Exception:
             pass
-        return _render_session(session)
+        return _render_session(session, self.prefix)
 
     def ask(self, task_id: str, question: str, source: str, now: float) -> str:
         if not _published(self, task_id):
@@ -71,7 +72,7 @@ class StudentPage:
                 session.ask(question, HelpSource(source))
             except Exception:
                 pass
-        return _render_session(session)
+        return _render_session(session, self.prefix)
 
     def submit(self, task_id: str, now: float) -> str:
         if not _published(self, task_id):
@@ -84,7 +85,7 @@ class StudentPage:
             session.submit()
         except Exception:
             pass
-        return _render_session(session)
+        return _render_session(session, self.prefix)
 
     def asset(self, task_id: str, filename: str) -> tuple[str, bytes] | None:
         session = self.sessions.get(task_id)
@@ -164,11 +165,16 @@ def _published(page: StudentPage, task_id: str) -> bool:
     return task.published
 
 
+def _with_prefix(prefix: str, path: str) -> str:
+    return prefix + path
+
+
 def _render_work(page: StudentPage, task_id: str) -> str:
     task = page.catalog.get(task_id)
     work = page.catalog.work(task_id)
     return _page(
         task_id,
+        page.prefix,
         display_status(task),
         work.questions,
         work.answers,
@@ -177,10 +183,11 @@ def _render_work(page: StudentPage, task_id: str) -> str:
     )
 
 
-def _render_session(session: Session) -> str:
+def _render_session(session: Session, prefix: str) -> str:
     view = session.view()
     return _page(
         session.work.task_id,
+        prefix,
         view.status,
         session.work.questions,
         session.work.answers,
@@ -195,6 +202,7 @@ def _render_session(session: Session) -> str:
 
 def _page(
     task_id,
+    prefix,
     status,
     questions,
     answers,
@@ -206,7 +214,7 @@ def _page(
     send_closed=False,
 ) -> str:
     parts = ["<h1>" + escape(task_id) + "</h1><p>" + escape(status) + "</p>"]
-    action = "/tasks/" + quote(task_id, safe="") + "/answers"
+    action = _with_prefix(prefix, "/tasks/" + quote(task_id, safe="") + "/answers")
     parts.append("<form method=\"post\" action=\"" + action + "\">")
     for index, question in enumerate(questions):
         item = revealed[index] if revealed else None
@@ -218,21 +226,21 @@ def _page(
         if presets:
             parts.append("<h2>预设提问</h2><ul>")
             for preset in presets:
-                parts.append("<li>" + _ask_form(task_id, preset, HelpSource.PRESET.value) + "</li>")
+                parts.append("<li>" + _ask_form(task_id, preset, HelpSource.PRESET.value, prefix) + "</li>")
             parts.append("</ul>")
-        parts.append(_ask_form(task_id, "", HelpSource.OWN.value, own=True))
-        submit_action = "/tasks/" + quote(task_id, safe="") + "/submit"
+        parts.append(_ask_form(task_id, "", HelpSource.OWN.value, prefix, own=True))
+        submit_action = _with_prefix(prefix, "/tasks/" + quote(task_id, safe="") + "/submit")
         parts.append(
             "<form method=\"post\" action=\"" + submit_action + "\">"
             + "<button type=\"submit\">提交</button></form>"
         )
     if scaffold is not None:
-        current = "/tasks/" + quote(task_id, safe="") + "/assets/"
+        current = _with_prefix(prefix, "/tasks/" + quote(task_id, safe="") + "/assets/")
         parts.append("<h2>支架</h2>" + _scaffold_body(scaffold, current))
     if dialogue:
         parts.append("<h2>对话</h2>")
         for index, turn in enumerate(dialogue):
-            parts.append(_turn(task_id, index, turn))
+            parts.append(_turn(task_id, index, turn, prefix))
     return _document("".join(parts))
 
 
@@ -249,11 +257,11 @@ def _scaffold_body(scaffold, address_prefix: str) -> str:
     return "".join(parts)
 
 
-def _turn(task_id: str, index: int, turn) -> str:
+def _turn(task_id: str, index: int, turn, prefix: str) -> str:
     body = "<h3>" + escape(turn.question) + "</h3>"
     if turn.scaffold is not None:
-        prefix = "/tasks/" + quote(task_id, safe="") + "/turns/" + str(index) + "/assets/"
-        body += "<div class=\"turn-scaffold\">" + _scaffold_body(turn.scaffold, prefix) + "</div>"
+        address = _with_prefix(prefix, "/tasks/" + quote(task_id, safe="") + "/turns/" + str(index) + "/assets/")
+        body += "<div class=\"turn-scaffold\">" + _scaffold_body(turn.scaffold, address) + "</div>"
     return "<article>" + body + "</article>"
 
 
@@ -301,8 +309,8 @@ def _question(index: int, question, answer, locked: bool, revealed=None) -> str:
     return body + "</section>"
 
 
-def _ask_form(task_id: str, question: str, source: str, own: bool = False) -> str:
-    action = "/tasks/" + quote(task_id, safe="") + "/ask"
+def _ask_form(task_id: str, question: str, source: str, prefix: str, own: bool = False) -> str:
+    action = _with_prefix(prefix, "/tasks/" + quote(task_id, safe="") + "/ask")
     if own:
         control = "<input type=\"text\" name=\"question\" value=\"\">"
         label = "<button type=\"submit\">提问</button>"
