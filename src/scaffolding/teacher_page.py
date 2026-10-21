@@ -58,6 +58,17 @@ class TeacherPage:
     def apply(self, task_id: str, fields: dict, action: str) -> str:
         if task_id not in self.catalog._tasks:
             return _missing()
+        task = self.catalog.get(task_id)
+        if action == "abandon":
+            self.drafts.pop(task_id, None)
+            return _render(self, task_id)
+        if action == "publish":
+            if task_id in self.drafts:
+                return _render(self, task_id, "先保存再发布")
+            if task.questions == ():
+                return _render(self, task_id, "没有题目，不能发布")
+            self.catalog.publish(task_id)
+            return _render(self, task_id)
         self.drafts[task_id] = _apply_action(_draft_from_fields(fields), action)
         if action == "save":
             return _save(self, task_id)
