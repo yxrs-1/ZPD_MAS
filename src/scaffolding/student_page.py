@@ -82,6 +82,18 @@ class StudentPage:
             pass
         return _render_session(session)
 
+    def asset(self, task_id: str, filename: str) -> tuple[str, bytes] | None:
+        session = self.sessions.get(task_id)
+        if session is None:
+            return None
+        scaffold = session.view().scaffold
+        if scaffold is None:
+            return None
+        for asset in scaffold.assets:
+            if asset.filename == filename:
+                return asset.filename, asset.content
+        return None
+
     def _ensure_session(self, task_id: str):
         if task_id in self.sessions:
             return self.sessions[task_id]
@@ -270,6 +282,12 @@ def response_for(page: StudentPage, method: str, path: str, body: str, now: floa
             question = fields.get("question", [""])[-1]
             source = fields.get("source", [""])[-1]
             return _html_response(page.ask(task_id, question, source, now))
+        if method == "GET" and len(parts) == 4 and parts[2] == "assets":
+            found = page.asset(task_id, parts[3])
+            if found is None:
+                return PageResponse(404, "application/octet-stream", b"")
+            filename, content = found
+            return PageResponse(200, "application/octet-stream", content, filename)
     return _html_response(_missing(), 404)
 
 
