@@ -1,6 +1,11 @@
-from urllib.parse import parse_qs, urlsplit
+import time
+from urllib.parse import parse_qs, quote, urlsplit
 
+from scaffolding.model_decision import ModelDecisionAgent
+from scaffolding.model_generator import deepseek_complete
+from scaffolding.model_scaffold import ModelScaffoldAgent
 from scaffolding.student_page import StudentPage
+from scaffolding.tasks import TaskCatalog
 from scaffolding.student_page import response_for as student_response_for
 from scaffolding.teacher_page import PageResponse
 from scaffolding.teacher_page import TeacherPage
@@ -52,3 +57,42 @@ def _document(body: str) -> str:
 
 def _html(text: str, status: int = 200) -> PageResponse:
     return PageResponse(status, "text/html; charset=utf-8", text.encode())
+
+
+def production_classroom(*, post, api_key=None) -> Classroom:
+    catalog = TaskCatalog()
+
+    def complete(messages):
+        return deepseek_complete(messages, post=post, api_key=api_key)
+
+    return Classroom(catalog, ModelDecisionAgent(complete), ModelScaffoldAgent(complete))
+
+
+def serve(room: Classroom, port: int) -> None:
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self._respond()
+
+        def do_POST(self) -> None:
+            self._respond()
+
+        def _respond(self) -> None:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw = self.rfile.read(length).decode("utf-8")
+            response = response_for(room, self.command, self.path, raw, time.monotonic())
+            self.send_response(response.status)
+            self.send_header("Content-Type", response.content_type)
+            filename = getattr(response, "filename", "")
+            if filename:
+                encoded = quote(filename, safe="")
+                self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + encoded)
+            self.send_header("Content-Length", str(len(response.body)))
+            self.end_headers()
+            self.wfile.write(response.body)
+
+        def log_message(self, *args) -> None:
+            return
+
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
