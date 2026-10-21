@@ -1,4 +1,4 @@
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from scaffolding.student_page import StudentPage
 from scaffolding.student_page import response_for as student_response_for
@@ -25,7 +25,14 @@ def response_for(room: Classroom, method: str, path: str, body: str, now: float)
     if not rest.startswith("/"):
         rest = "/" + rest
     if parts[0] == "teacher":
-        return teacher_response_for(room.teacher, method, rest, body)
+        response = teacher_response_for(room.teacher, method, rest, body)
+        if method == "POST" and len(parts) == 3 and parts[1] == "tasks":
+            action = parse_qs(body, keep_blank_values=True).get("action", [""])[-1]
+            task_id = parts[2]
+            if action == "delete" and task_id not in room.catalog._tasks:
+                room.student.sessions.pop(task_id, None)
+                room.student.shown_at.pop(task_id, None)
+        return response
     if len(parts) >= 3 and parts[1] == "tasks" and not _student_visible(room, parts[2]):
         return _html(_document("<h1>任务不存在</h1>"), 404)
     return student_response_for(room.student, method, rest, body, now)
