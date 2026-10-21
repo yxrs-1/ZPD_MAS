@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+from scaffolding.generation import LessonOrigin, StageOrigin
 from scaffolding.knowledge import KnowledgeBase, LessonRetrieval, LessonSource
 from scaffolding.objectives import ObjectiveCatalog, Rejected as ObjectiveRejected
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
@@ -551,6 +552,7 @@ def _render_objectives(page, query, message: str) -> str:
             + "<input type=\"hidden\" name=\"objective\" value=\"" + escape(item.objective_id) + "\">"
             + "<button type=\"submit\" name=\"action\" value=\"删除\">删除</button></form></article>"
         )
+    parts.append(_task_links(page, query))
     return _document("".join(parts))
 
 
@@ -609,6 +611,26 @@ def _extract_objectives(page, query) -> str:
     if saved == ():
         return _render_objectives(page, query, "没有留下可保存的目标")
     return _render_objectives(page, query, "")
+
+
+def _task_links(page, query) -> str:
+    if page.generation is None or query is None:
+        return ""
+    items = []
+    for task in page.catalog._tasks.values():
+        origin = page.generation.origin(task.task_id)
+        matched = False
+        if query[0] == "课时":
+            matched = origin == LessonOrigin(query[1], query[2], query[3])
+        elif query[0] == "学段":
+            matched = origin == StageOrigin(query[1])
+        if not matched:
+            continue
+        href = _with_prefix(page.prefix, "/tasks/" + quote(task.task_id, safe=""))
+        items.append("<li><a href=\"" + href + "\">" + escape(task.task_id) + "</a></li>")
+    if items == []:
+        return ""
+    return "<ul>" + "".join(items) + "</ul>"
 
 
 def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageResponse:
