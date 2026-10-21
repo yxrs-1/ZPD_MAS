@@ -605,7 +605,9 @@ def _extract_objectives(page, query) -> str:
         else:
             saved = page.objectives.extract_stage(query[1])
     except ObjectiveRejected:
-        return _render_objectives(page, query, "已有目标，不能再次提炼")
+        if _saved(page, query) != ():
+            return _render_objectives(page, query, "已有目标，不能再次提炼")
+        return _render_objectives(page, query, "提炼失败，没有保存目标")
     except Exception:
         return _render_objectives(page, query, "提炼失败，没有保存目标")
     if saved == ():

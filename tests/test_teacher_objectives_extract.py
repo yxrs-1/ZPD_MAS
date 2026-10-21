@@ -1,4 +1,4 @@
-from scaffolding.objectives import ObjectiveDraft
+from scaffolding.objectives import ObjectiveDraft, Rejected
 from scaffolding.teacher_page import response_for
 from tests.objective_helpers import ScriptedExtractor, sample_base
 from tests.teacher_objectives_helpers import form, make_page, text
@@ -92,3 +92,20 @@ def test_an_existing_record_rejects_extract_without_calling_the_extractor():
     assert 'value="提炼"' not in rejected_text
     assert extractor.calls == calls
     assert objectives.lesson_objectives("人教版", "必修一", "信息系统的组成")[0].statement == "能描述组成"
+
+
+def test_a_rejected_extractor_reports_extract_failure():
+    base = sample_base()
+    extractor = ScriptedExtractor()
+    extractor.lesson_error = Rejected("model reply is not the objective JSON")
+    page, objectives = make_page(base, extractor)
+
+    failed = response_for(page, "POST", "/objectives", _lesson_form(), )
+    failed_text = text(failed)
+
+    assert failed.status == 200
+    assert "提炼失败，没有保存目标" in failed_text
+    assert "已有目标，不能再次提炼" not in failed_text
+    assert 'value="提炼"' in failed_text
+    assert "课时原文" in failed_text
+    assert objectives.lesson_objectives("人教版", "必修一", "信息系统的组成") == ()
