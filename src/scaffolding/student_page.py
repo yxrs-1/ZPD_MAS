@@ -123,7 +123,14 @@ def _published(page: StudentPage, task_id: str) -> bool:
 def _render_work(page: StudentPage, task_id: str) -> str:
     task = page.catalog.get(task_id)
     work = page.catalog.work(task_id)
-    return _page(task_id, display_status(task), work.questions, work.answers, ())
+    return _page(
+        task_id,
+        display_status(task),
+        work.questions,
+        work.answers,
+        (),
+        dialogue=work.dialogue,
+    )
 
 
 def _render_session(session: Session) -> str:
@@ -134,10 +141,12 @@ def _render_session(session: Session) -> str:
         session.work.questions,
         session.work.answers,
         view.presets,
+        scaffold=view.scaffold,
+        dialogue=view.dialogue,
     )
 
 
-def _page(task_id, status, questions, answers, presets) -> str:
+def _page(task_id, status, questions, answers, presets, scaffold=None, dialogue=()) -> str:
     parts = ["<h1>" + escape(task_id) + "</h1><p>" + escape(status) + "</p>"]
     action = "/tasks/" + quote(task_id, safe="") + "/answers"
     parts.append("<form method=\"post\" action=\"" + action + "\">")
@@ -155,7 +164,33 @@ def _page(task_id, status, questions, answers, presets) -> str:
         "<form method=\"post\" action=\"" + submit_action + "\">"
         + "<button type=\"submit\">提交</button></form>"
     )
+    if scaffold is not None:
+        parts.append("<h2>支架</h2>" + _scaffold_body(task_id, scaffold))
+    if dialogue:
+        parts.append("<h2>对话</h2>")
+        for turn in dialogue:
+            parts.append(_turn(task_id, turn))
     return _document("".join(parts))
+
+
+def _scaffold_body(task_id: str, scaffold) -> str:
+    parts = ["<p>" + escape(scaffold.text) + "</p>"]
+    for asset in scaffold.assets:
+        address = "/tasks/" + quote(task_id, safe="") + "/assets/" + quote(asset.filename, safe="")
+        parts.append(
+            "<figure><figcaption>" + escape(asset.kind.value) + " " + escape(asset.filename)
+            + "</figcaption><img src=\"" + escape(address) + "\" alt=\"" + escape(asset.filename)
+            + "\"><a href=\"" + escape(address) + "\" download=\"" + escape(asset.filename)
+            + "\">保存</a></figure>"
+        )
+    return "".join(parts)
+
+
+def _turn(task_id: str, turn) -> str:
+    body = "<h3>" + escape(turn.question) + "</h3>"
+    if turn.scaffold is not None:
+        body += "<div class=\"turn-scaffold\">" + _scaffold_body(task_id, turn.scaffold) + "</div>"
+    return "<article>" + body + "</article>"
 
 
 def _question(index: int, question, answer, locked: bool) -> str:
@@ -229,6 +264,12 @@ def response_for(page: StudentPage, method: str, path: str, body: str, now: floa
             if not _published(page, task_id):
                 return _html_response(_missing(), 404)
             return _html_response(_post_answers(page, task_id, fields, now))
+        if method == "POST" and parts[2:] == ["ask"]:
+            if not _published(page, task_id):
+                return _html_response(_missing(), 404)
+            question = fields.get("question", [""])[-1]
+            source = fields.get("source", [""])[-1]
+            return _html_response(page.ask(task_id, question, source, now))
     return _html_response(_missing(), 404)
 
 
