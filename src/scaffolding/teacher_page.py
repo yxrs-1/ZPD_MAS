@@ -59,6 +59,12 @@ class TeacherPage:
         if task_id not in self.catalog._tasks:
             return _missing()
         task = self.catalog.get(task_id)
+        if action == "delete":
+            self.drafts.pop(task_id, None)
+            self.catalog.delete(task_id)
+            return self.list_tasks()
+        if task.started:
+            return _render(self, task_id, "学生已开始，只能删除")
         if action == "abandon":
             self.drafts.pop(task_id, None)
             return _render(self, task_id)
