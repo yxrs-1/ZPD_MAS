@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from html import escape
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from scaffolding.records import ChoiceQuestion, HelpSource, OpenQuestion, SelectionMode, TrueFalseQuestion
 from scaffolding.session import Session
@@ -216,10 +216,37 @@ def _ask_form(task_id: str, question: str, source: str, own: bool = False) -> st
 
 def response_for(page: StudentPage, method: str, path: str, body: str, now: float) -> PageResponse:
     parts = [unquote(part) for part in urlsplit(path).path.split("/") if part]
+    fields = parse_qs(body, keep_blank_values=True)
     if method == "GET" and parts == []:
         return _html_response(page.todo())
-    if method == "GET" and len(parts) == 2 and parts[0] == "tasks":
-        if not _published(page, parts[1]):
-            return _html_response(_missing(), 404)
-        return _html_response(page.open_task(parts[1], now))
+    if len(parts) >= 2 and parts[0] == "tasks":
+        task_id = parts[1]
+        if method == "GET" and len(parts) == 2:
+            if not _published(page, task_id):
+                return _html_response(_missing(), 404)
+            return _html_response(page.open_task(task_id, now))
+        if method == "POST" and parts[2:] == ["answers"]:
+            if not _published(page, task_id):
+                return _html_response(_missing(), 404)
+            return _html_response(_post_answers(page, task_id, fields, now))
     return _html_response(_missing(), 404)
+
+
+def _post_answers(page: StudentPage, task_id: str, fields: dict, now: float) -> str:
+    indexes = []
+    for key in fields:
+        if key.startswith("selected-") or key.startswith("text-"):
+            suffix = key.split("-", 1)[1]
+            if suffix.isdigit():
+                indexes.append(int(suffix))
+    html = None
+    for index in sorted(set(indexes)):
+        text_key = "text-" + str(index)
+        selected_key = "selected-" + str(index)
+        if text_key in fields:
+            html = page.edit_answer(task_id, index, text=fields[text_key][-1], now=now)
+        if selected_key in fields:
+            html = page.edit_answer(task_id, index, selected=tuple(fields[selected_key]), now=now)
+    if html is None:
+        return page.open_task(task_id, now)
+    return html
