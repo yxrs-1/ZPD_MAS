@@ -98,6 +98,21 @@ class StudentPage:
                 return asset.filename, asset.content
         return None
 
+    def turn_asset(self, task_id: str, index: int, filename: str) -> tuple[str, bytes] | None:
+        session = self.sessions.get(task_id)
+        if session is None:
+            return None
+        dialogue = session.view().dialogue
+        if index < 0 or index >= len(dialogue):
+            return None
+        scaffold = dialogue[index].scaffold
+        if scaffold is None:
+            return None
+        for asset in scaffold.assets:
+            if asset.filename == filename:
+                return asset.filename, asset.content
+        return None
+
     def _ensure_session(self, task_id: str):
         if task_id in self.sessions:
             return self.sessions[task_id]
@@ -132,6 +147,13 @@ def _missing() -> str:
 
 def _html_response(text: str, status: int = 200) -> PageResponse:
     return PageResponse(status, "text/html; charset=utf-8", text.encode())
+
+
+def _asset_response(found: tuple[str, bytes] | None) -> PageResponse:
+    if found is None:
+        return PageResponse(404, "application/octet-stream", b"")
+    filename, content = found
+    return PageResponse(200, "application/octet-stream", content, filename)
 
 
 def _published(page: StudentPage, task_id: str) -> bool:
@@ -205,18 +227,19 @@ def _page(
             + "<button type=\"submit\">提交</button></form>"
         )
     if scaffold is not None:
-        parts.append("<h2>支架</h2>" + _scaffold_body(task_id, scaffold))
+        current = "/tasks/" + quote(task_id, safe="") + "/assets/"
+        parts.append("<h2>支架</h2>" + _scaffold_body(scaffold, current))
     if dialogue:
         parts.append("<h2>对话</h2>")
-        for turn in dialogue:
-            parts.append(_turn(task_id, turn))
+        for index, turn in enumerate(dialogue):
+            parts.append(_turn(task_id, index, turn))
     return _document("".join(parts))
 
 
-def _scaffold_body(task_id: str, scaffold) -> str:
+def _scaffold_body(scaffold, address_prefix: str) -> str:
     parts = ["<p>" + escape(scaffold.text) + "</p>"]
     for asset in scaffold.assets:
-        address = "/tasks/" + quote(task_id, safe="") + "/assets/" + quote(asset.filename, safe="")
+        address = address_prefix + quote(asset.filename, safe="")
         parts.append(
             "<figure><figcaption>" + escape(asset.kind.value) + " " + escape(asset.filename)
             + "</figcaption><img src=\"" + escape(address) + "\" alt=\"" + escape(asset.filename)
@@ -226,10 +249,11 @@ def _scaffold_body(task_id: str, scaffold) -> str:
     return "".join(parts)
 
 
-def _turn(task_id: str, turn) -> str:
+def _turn(task_id: str, index: int, turn) -> str:
     body = "<h3>" + escape(turn.question) + "</h3>"
     if turn.scaffold is not None:
-        body += "<div class=\"turn-scaffold\">" + _scaffold_body(task_id, turn.scaffold) + "</div>"
+        prefix = "/tasks/" + quote(task_id, safe="") + "/turns/" + str(index) + "/assets/"
+        body += "<div class=\"turn-scaffold\">" + _scaffold_body(turn.scaffold, prefix) + "</div>"
     return "<article>" + body + "</article>"
 
 
@@ -319,24 +343,31 @@ def response_for(page: StudentPage, method: str, path: str, body: str, now: floa
             return _html_response(page.submit(task_id, now))
         if method == "GET" and len(parts) == 4 and parts[2] == "assets":
             found = page.asset(task_id, parts[3])
-            if found is None:
-                return PageResponse(404, "application/octet-stream", b"")
-            filename, content = found
-            return PageResponse(200, "application/octet-stream", content, filename)
+            return _asset_response(found)
+        if method == "GET" and len(parts) == 6 and parts[2] == "turns" and parts[4] == "assets":
+            index = int(parts[3]) if parts[3].isdigit() else -1
+            found = page.turn_asset(task_id, index, parts[5])
+            return _asset_response(found)
     return _html_response(_missing(), 404)
 
 
+def _current_selected(page: StudentPage, task_id: str, index: int) -> tuple[str, ...]:
+    session = page.sessions.get(task_id)
+    if session is not None:
+        return session.work.answers[index].selected
+    if not page.catalog.get(task_id).started:
+        return ()
+    return page.catalog.work(task_id).answers[index].selected
+
+
 def _post_answers(page: StudentPage, task_id: str, fields: dict, now: float) -> str:
-    indexes = []
-    for key in fields:
-        if key.startswith("selected-") or key.startswith("text-"):
-            suffix = key.split("-", 1)[1]
-            if suffix.isdigit():
-                indexes.append(int(suffix))
     html = None
-    for index in sorted(set(indexes)):
+    for index, question in enumerate(page.catalog.get(task_id).questions):
         text_key = "text-" + str(index)
         selected_key = "selected-" + str(index)
+        if isinstance(question, (ChoiceQuestion, TrueFalseQuestion)) and selected_key not in fields:
+            if _current_selected(page, task_id, index) != ():
+                html = page.edit_answer(task_id, index, selected=(), now=now)
         if text_key in fields:
             html = page.edit_answer(task_id, index, text=fields[text_key][-1], now=now)
         if selected_key in fields:
