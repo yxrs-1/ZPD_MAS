@@ -26,7 +26,17 @@ def response_for(room: Classroom, method: str, path: str, body: str, now: float)
         rest = "/" + rest
     if parts[0] == "teacher":
         return teacher_response_for(room.teacher, method, rest, body)
+    if len(parts) >= 3 and parts[1] == "tasks" and not _student_visible(room, parts[2]):
+        return _html(_document("<h1>任务不存在</h1>"), 404)
     return student_response_for(room.student, method, rest, body, now)
+
+
+def _student_visible(room: Classroom, task_id: str) -> bool:
+    try:
+        task = room.catalog.get(task_id)
+    except KeyError:
+        return False
+    return task.published
 
 
 def _document(body: str) -> str:
