@@ -3,7 +3,7 @@ from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from scaffolding.knowledge import KnowledgeBase, LessonRetrieval, LessonSource
-from scaffolding.objectives import ObjectiveCatalog
+from scaffolding.objectives import ObjectiveCatalog, Rejected as ObjectiveRejected
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 
 
@@ -65,11 +65,13 @@ class TeacherPage:
         return _render_objectives(self, None, message)
 
     def apply_objectives(self, fields, action: str) -> str:
-        if action != "查看":
+        if action not in ("查看", "提炼"):
             return self.open_objectives()
         query = _objective_query(fields)
         if query is None:
             return self.open_objectives("先填完整再查询")
+        if action == "提炼":
+            return _extract_objectives(self, query)
         return _render_objectives(self, query, "")
 
     def create_task(self) -> str:
@@ -530,7 +532,32 @@ def _render_objectives(page, query, message: str) -> str:
         parts.append("<p>" + escape(message) + "</p>")
     parts.append(_query_form(page, query, offer_extract=query is not None and objectives == ()))
     parts.append(_retrieval_html(retrieval))
+    for item in objectives:
+        parts.append(
+            "<article><p>" + escape(item.objective_id) + "</p><p>"
+            + escape(item.dimension) + "</p><p>" + escape(item.statement) + "</p><p>"
+            + escape(_source_text(item.source)) + "</p></article>"
+        )
     return _document("".join(parts))
+
+
+def _extract_objectives(page, query) -> str:
+    if _saved(page, query) != ():
+        return _render_objectives(page, query, "已有目标，不能再次提炼")
+    if _retrieve(page, query) is None:
+        return _render_objectives(page, query, "没有检索到资料")
+    try:
+        if query[0] == "课时":
+            saved = page.objectives.extract_lesson(query[1], query[2], query[3])
+        else:
+            saved = page.objectives.extract_stage(query[1])
+    except ObjectiveRejected:
+        return _render_objectives(page, query, "已有目标，不能再次提炼")
+    except Exception:
+        return _render_objectives(page, query, "提炼失败，没有保存目标")
+    if saved == ():
+        return _render_objectives(page, query, "没有留下可保存的目标")
+    return _render_objectives(page, query, "")
 
 
 def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageResponse:
