@@ -4,6 +4,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 from scaffolding.records import ChoiceQuestion, HelpSource, OpenQuestion, SelectionMode, TrueFalseQuestion
 from scaffolding.session import Session
+from scaffolding.tasks import display_status
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,49 @@ class StudentPage:
         if not _published(self, task_id):
             return _missing()
         session = self._ensure_session(task_id)
+        if session is None:
+            return _render_work(self, task_id)
         self._note_shown(session, task_id, now)
+        return _render_session(session)
+
+    def edit_answer(self, task_id: str, index: int, *, text: str | None = None, selected: tuple[str, ...] | None = None, now: float) -> str:
+        if not _published(self, task_id):
+            return _missing()
+        session = self._ensure_session(task_id)
+        if session is None:
+            return _render_work(self, task_id)
+        self._note_shown(session, task_id, now)
+        try:
+            session.edit_answer(index, text=text, selected=selected)
+        except Exception:
+            pass
+        return _render_session(session)
+
+    def ask(self, task_id: str, question: str, source: str, now: float) -> str:
+        if not _published(self, task_id):
+            return _missing()
+        session = self._ensure_session(task_id)
+        if session is None:
+            return _render_work(self, task_id)
+        self._note_shown(session, task_id, now)
+        if source in (HelpSource.PRESET.value, HelpSource.OWN.value):
+            try:
+                session.ask(question, HelpSource(source))
+            except Exception:
+                pass
+        return _render_session(session)
+
+    def submit(self, task_id: str, now: float) -> str:
+        if not _published(self, task_id):
+            return _missing()
+        session = self._ensure_session(task_id)
+        if session is None:
+            return _render_work(self, task_id)
+        self._note_shown(session, task_id, now)
+        try:
+            session.submit()
+        except Exception:
+            pass
         return _render_session(session)
 
     def _ensure_session(self, task_id: str):
@@ -45,7 +88,10 @@ class StudentPage:
         task = self.catalog.get(task_id)
         if not task.started:
             self.catalog.start(task_id)
-        session = Session(self.catalog, self.catalog.work(task_id), self.decision, self.scaffold_agent)
+        try:
+            session = Session(self.catalog, self.catalog.work(task_id), self.decision, self.scaffold_agent)
+        except Exception:
+            return None
         self.sessions[task_id] = session
         return session
 
@@ -72,6 +118,12 @@ def _published(page: StudentPage, task_id: str) -> bool:
     except KeyError:
         return False
     return task.published
+
+
+def _render_work(page: StudentPage, task_id: str) -> str:
+    task = page.catalog.get(task_id)
+    work = page.catalog.work(task_id)
+    return _page(task_id, display_status(task), work.questions, work.answers, ())
 
 
 def _render_session(session: Session) -> str:
