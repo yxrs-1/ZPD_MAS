@@ -65,13 +65,17 @@ class TeacherPage:
         return _render_objectives(self, None, message)
 
     def apply_objectives(self, fields, action: str) -> str:
-        if action not in ("查看", "提炼"):
+        if action not in ("查看", "提炼", "修改", "删除"):
             return self.open_objectives()
         query = _objective_query(fields)
         if query is None:
             return self.open_objectives("先填完整再查询")
         if action == "提炼":
             return _extract_objectives(self, query)
+        if action == "修改":
+            return _edit_objective(self, query, fields)
+        if action == "删除":
+            return _delete_objective(self, query, fields)
         return _render_objectives(self, query, "")
 
     def create_task(self) -> str:
@@ -532,13 +536,60 @@ def _render_objectives(page, query, message: str) -> str:
         parts.append("<p>" + escape(message) + "</p>")
     parts.append(_query_form(page, query, offer_extract=query is not None and objectives == ()))
     parts.append(_retrieval_html(retrieval))
+    action = _with_prefix(page.prefix, "/objectives")
     for item in objectives:
+        hidden = "" if query is None else _hidden_query(query)
         parts.append(
             "<article><p>" + escape(item.objective_id) + "</p><p>"
             + escape(item.dimension) + "</p><p>" + escape(item.statement) + "</p><p>"
-            + escape(_source_text(item.source)) + "</p></article>"
+            + escape(_source_text(item.source)) + "</p>"
+            + "<form method=\"post\" action=\"" + action + "\">" + hidden
+            + "<input type=\"hidden\" name=\"objective\" value=\"" + escape(item.objective_id) + "\">"
+            + "<input name=\"statement\" value=\"" + escape(item.statement) + "\">"
+            + "<button type=\"submit\" name=\"action\" value=\"修改\">修改表述</button></form>"
+            + "<form method=\"post\" action=\"" + action + "\">" + hidden
+            + "<input type=\"hidden\" name=\"objective\" value=\"" + escape(item.objective_id) + "\">"
+            + "<button type=\"submit\" name=\"action\" value=\"删除\">删除</button></form></article>"
         )
     return _document("".join(parts))
+
+
+def _hidden_query(query) -> str:
+    mode, version, volume, lesson, stage, _checked_lesson, _checked_stage = _query_fields(query)
+    return (
+        "<input type=\"hidden\" name=\"mode\" value=\"" + escape(mode) + "\">"
+        + "<input type=\"hidden\" name=\"version\" value=\"" + escape(version) + "\">"
+        + "<input type=\"hidden\" name=\"volume\" value=\"" + escape(volume) + "\">"
+        + "<input type=\"hidden\" name=\"lesson\" value=\"" + escape(lesson) + "\">"
+        + "<input type=\"hidden\" name=\"stage\" value=\"" + escape(stage) + "\">"
+    )
+
+
+def _edit_objective(page, query, fields) -> str:
+    objective_id = fields.get("objective", [""])[-1]
+    statement = fields.get("statement", [""])[-1]
+    current = _saved(page, query)
+    if objective_id not in {item.objective_id for item in current}:
+        return _render_objectives(page, query, "目标不存在")
+    if not _filled(statement):
+        return _render_objectives(page, query, "表述不能为空")
+    try:
+        page.objectives.edit_statement(objective_id, statement)
+    except ObjectiveRejected:
+        return _render_objectives(page, query, "目标不存在")
+    return _render_objectives(page, query, "")
+
+
+def _delete_objective(page, query, fields) -> str:
+    objective_id = fields.get("objective", [""])[-1]
+    current = _saved(page, query)
+    if objective_id not in {item.objective_id for item in current}:
+        return _render_objectives(page, query, "目标不存在")
+    try:
+        page.objectives.delete(objective_id)
+    except ObjectiveRejected:
+        return _render_objectives(page, query, "目标不存在")
+    return _render_objectives(page, query, "")
 
 
 def _extract_objectives(page, query) -> str:
