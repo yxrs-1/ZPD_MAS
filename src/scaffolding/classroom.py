@@ -1,9 +1,13 @@
 import time
 from urllib.parse import parse_qs, quote, urlsplit
 
+from scaffolding.generation import TaskGeneration
+from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
-from scaffolding.model_generator import deepseek_complete
+from scaffolding.model_extractor import ModelObjectiveExtractor
+from scaffolding.model_generator import ModelQuestionGenerator, deepseek_complete
 from scaffolding.model_scaffold import ModelScaffoldAgent
+from scaffolding.objectives import ObjectiveCatalog
 from scaffolding.student_page import StudentPage
 from scaffolding.tasks import TaskCatalog
 from scaffolding.student_page import response_for as student_response_for
@@ -12,10 +16,36 @@ from scaffolding.teacher_page import TeacherPage
 from scaffolding.teacher_page import response_for as teacher_response_for
 
 
+class _EmptyExtractor:
+    def extract(self, retrieval):
+        return ()
+
+
 class Classroom:
-    def __init__(self, catalog, decision, scaffold_agent) -> None:
+    def __init__(
+        self,
+        catalog,
+        decision,
+        scaffold_agent,
+        knowledge=None,
+        objectives=None,
+        generation=None,
+    ) -> None:
         self.catalog = catalog
-        self.teacher = TeacherPage(catalog, prefix="/teacher")
+        self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
+        self.objectives = (
+            objectives
+            if objectives is not None
+            else ObjectiveCatalog(self.knowledge, _EmptyExtractor())
+        )
+        self.generation = generation
+        self.teacher = TeacherPage(
+            catalog,
+            prefix="/teacher",
+            knowledge=self.knowledge,
+            objectives=self.objectives,
+            generation=generation,
+        )
         self.student = StudentPage(catalog, decision, scaffold_agent, prefix="/student")
 
 
@@ -61,11 +91,21 @@ def _html(text: str, status: int = 200) -> PageResponse:
 
 def production_classroom(*, post, api_key=None) -> Classroom:
     catalog = TaskCatalog()
+    knowledge = KnowledgeBase()
 
     def complete(messages):
         return deepseek_complete(messages, post=post, api_key=api_key)
 
-    return Classroom(catalog, ModelDecisionAgent(complete), ModelScaffoldAgent(complete))
+    objectives = ObjectiveCatalog(knowledge, ModelObjectiveExtractor(complete))
+    generation = TaskGeneration(objectives, catalog, ModelQuestionGenerator(complete))
+    return Classroom(
+        catalog,
+        ModelDecisionAgent(complete),
+        ModelScaffoldAgent(complete),
+        knowledge,
+        objectives,
+        generation,
+    )
 
 
 def serve(room: Classroom, port: int) -> None:
