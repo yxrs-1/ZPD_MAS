@@ -99,13 +99,14 @@ def test_a_removed_option_that_is_still_selected_is_rejected():
     draft = page.drafts["task-1"][0]
     assert "人员" not in draft.options
     assert "人员" in draft.selected
-    assert '<input type="hidden" name="selected-0" value="人员">' in html
+    assert '<input type="radio" name="selected-0" value="s:人员" checked>人员' in html
+    assert '<input type="hidden" name="selected-0"' not in html
 
     saved = body_text(_post(page, "task-1", **{
         "kind-0": "单选",
         "prompt-0": "选出人员",
         "option-0-0": "硬件",
-        "selected-0": "人员",
+        "selected-0": "s:人员",
         "explanation-0": "选择依据",
         "action": "save",
     }))
@@ -113,6 +114,57 @@ def test_a_removed_option_that_is_still_selected_is_rejected():
     assert "题目不合格，原任务保持不变" in saved
     assert page.catalog.get("task-1").questions == ()
     assert "task-1" in page.drafts
+    assert page.drafts["task-1"][0].selected == ("人员",)
+
+
+def test_replacing_a_deleted_choice_answer_saves_the_remaining_option():
+    page = TeacherPage(TaskCatalog())
+    page.create_task()
+    _post(page, "task-1", **{
+        "kind-0": "单选",
+        "prompt-0": "选出人员",
+        "option-0-0": "人员",
+        "option-0-1": "硬件",
+        "option-0-2": "软件",
+        "selected-0": "0",
+        "explanation-0": "选择依据",
+        "action": "delete-option:0:0",
+    })
+
+    _post(page, "task-1", **{
+        "kind-0": "单选",
+        "prompt-0": "选出人员",
+        "option-0-0": "硬件",
+        "option-0-1": "软件",
+        "selected-0": "0",
+        "explanation-0": "选择依据",
+        "action": "save",
+    })
+
+    question = page.catalog.get("task-1").questions[0]
+    assert question.answer == ("硬件",)
+    assert "task-1" not in page.drafts
+
+
+def test_a_stale_numeric_selected_text_is_not_mapped_to_an_option_index():
+    page = TeacherPage(TaskCatalog())
+    page.create_task()
+
+    html = body_text(_post(page, "task-1", **{
+        "kind-0": "单选",
+        "prompt-0": "选出编号",
+        "option-0-0": "0",
+        "option-0-1": "2",
+        "selected-0": "s:1",
+        "explanation-0": "选择依据",
+        "action": "save",
+    }))
+
+    assert "题目不合格，原任务保持不变" in html
+    assert page.catalog.get("task-1").questions == ()
+    assert "task-1" in page.drafts
+    assert page.drafts["task-1"][0].selected == ("1",)
+    assert page.drafts["task-1"][0].options == ("0", "2")
 
 
 def test_saving_maps_a_choice_index_to_the_edited_option_text():

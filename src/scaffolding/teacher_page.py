@@ -188,8 +188,8 @@ def _editor(index: int, item: DraftQuestion, count: int) -> str:
         for text in item.selected:
             if text not in item.options:
                 body += (
-                    "<input type=\"hidden\" name=\"selected-" + name
-                    + "\" value=\"" + escape(text) + "\">"
+                    "<input type=\"" + input_type + "\" name=\"selected-" + name
+                    + "\" value=\"s:" + escape(text) + "\" checked>" + escape(text)
                 )
         body += "<button type=\"submit\" name=\"action\" value=\"add-option:" + name + "\">增加选项</button>"
     elif item.kind == "判断":
@@ -246,10 +246,24 @@ def _read_only(question) -> str:
     return body + "<p>参考答案：" + escape(answer) + "</p><p>解析：" + escape(explanation) + "</p></section>"
 
 
+def _is_ascii_decimal(token: str) -> bool:
+    return token.isascii() and token.isdecimal()
+
+
+def _choice_token(token: str, options: tuple[str, ...]) -> str:
+    if token.startswith("s:"):
+        return token[2:]
+    if _is_ascii_decimal(token):
+        index = int(token)
+        if index < len(options):
+            return options[index]
+    return token
+
+
 def _draft_from_fields(fields: dict) -> tuple:
     indexes = []
     for key in fields:
-        if key.startswith("kind-") and key[5:].isdigit():
+        if key.startswith("kind-") and _is_ascii_decimal(key[5:]):
             indexes.append(int(key[5:]))
     items = []
     for index in sorted(set(indexes)):
@@ -259,7 +273,7 @@ def _draft_from_fields(fields: dict) -> tuple:
         prefix = "option-" + str(index) + "-"
         option_ids = []
         for key in fields:
-            if key.startswith(prefix) and key[len(prefix):].isdigit():
+            if key.startswith(prefix) and _is_ascii_decimal(key[len(prefix):]):
                 option_ids.append(int(key[len(prefix):]))
         options = tuple(
             fields["option-" + str(index) + "-" + str(option_id)][-1]
@@ -267,10 +281,7 @@ def _draft_from_fields(fields: dict) -> tuple:
         )
         selected = tuple(fields.get("selected-" + str(index), ()))
         if kind in ("单选", "多选"):
-            selected = tuple(
-                options[int(token)] if token.isdigit() and int(token) < len(options) else token
-                for token in selected
-            )
+            selected = tuple(_choice_token(token, options) for token in selected)
         items.append(DraftQuestion(
             kind,
             fields.get("prompt-" + str(index), [""])[-1],
