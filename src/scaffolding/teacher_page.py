@@ -2,6 +2,8 @@ from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+from scaffolding.knowledge import KnowledgeBase
+from scaffolding.objectives import ObjectiveCatalog
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 
 
@@ -26,11 +28,21 @@ class PageResponse:
     body: bytes
 
 
+class _EmptyExtractor:
+    def extract(self, retrieval):
+        return ()
+
+
 class TeacherPage:
-    def __init__(self, catalog, prefix: str = "") -> None:
+    def __init__(self, catalog, prefix: str = "", *, knowledge=None, objectives=None, generation=None) -> None:
         self.catalog = catalog
         self.drafts = {}
         self.prefix = prefix
+        self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
+        self.objectives = (
+            objectives if objectives is not None else ObjectiveCatalog(self.knowledge, _EmptyExtractor())
+        )
+        self.generation = generation
 
     def list_tasks(self) -> str:
         items = []
@@ -43,8 +55,23 @@ class TeacherPage:
         body = (
             "<h1>任务列表</h1><form method=\"post\" action=\""
             + _with_prefix(self.prefix, "/tasks") + "\">"
-            + "<button type=\"submit\">新建</button></form><ul>"
+            + "<button type=\"submit\">新建</button></form>"
+            + "<a href=\"" + _with_prefix(self.prefix, "/objectives") + "\">目标</a><ul>"
             + "".join(items) + "</ul>"
+        )
+        return _document(body)
+
+    def open_objectives(self) -> str:
+        action = _with_prefix(self.prefix, "/objectives")
+        body = (
+            "<h1>目标</h1><form method=\"post\" action=\"" + action + "\">"
+            + "<label><input type=\"radio\" name=\"mode\" value=\"课时\">课时</label>"
+            + "<label><input type=\"radio\" name=\"mode\" value=\"学段\">学段</label>"
+            + "<input name=\"version\">"
+            + "<input name=\"volume\">"
+            + "<input name=\"lesson\">"
+            + "<input name=\"stage\">"
+            + "<button type=\"submit\" name=\"action\" value=\"查看\">查看</button></form>"
         )
         return _document(body)
 
@@ -416,6 +443,10 @@ def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageRe
             fields = parse_qs(body, keep_blank_values=True)
             action = fields.get("action", [""])[-1]
             return _html(page.apply(task_id, fields, action))
+    if parts == ["objectives"] and method == "GET":
+        return _html(page.open_objectives())
+    if parts == ["objectives"] and method == "POST":
+        return _html(page.open_objectives())
     return _html(_missing(), 404)
 
 
