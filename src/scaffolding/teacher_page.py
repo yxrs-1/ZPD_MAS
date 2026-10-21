@@ -437,19 +437,24 @@ def _objective_query(fields):
         if not all(_filled(value) for value in (version, volume, lesson)):
             return None
         return ("课时", version, volume, lesson)
+    if mode == "学段":
+        stage = fields.get("stage", [""])[-1]
+        if not _filled(stage):
+            return None
+        return ("学段", stage)
     return None
 
 
 def _retrieve(page, query):
     if query[0] == "课时":
         return page.knowledge.retrieve_lesson(query[1], query[2], query[3])
-    return None
+    return page.knowledge.retrieve_stage(query[1])
 
 
 def _saved(page, query):
     if query[0] == "课时":
         return page.objectives.lesson_objectives(query[1], query[2], query[3])
-    return ()
+    return page.objectives.stage_objectives(query[1])
 
 
 def _source_text(source) -> str:
@@ -474,6 +479,8 @@ def _query_fields(query):
     mode = "" if query is None else query[0]
     if query is not None and query[0] == "课时":
         version, volume, lesson = query[1], query[2], query[3]
+    if query is not None and query[0] == "学段":
+        stage = query[1]
     checked_lesson = " checked" if mode == "课时" else ""
     checked_stage = " checked" if mode == "学段" else ""
     return mode, version, volume, lesson, stage, checked_lesson, checked_stage
@@ -498,12 +505,17 @@ def _query_form(page, query, offer_extract: bool) -> str:
 
 
 def _retrieval_html(retrieval) -> str:
-    if not isinstance(retrieval, LessonRetrieval):
+    if isinstance(retrieval, LessonRetrieval):
+        return (
+            "<section><h2>课时原文</h2><p>" + escape(retrieval.lesson_text) + "</p>"
+            + "<p>教材来源：" + escape(_source_text(retrieval.lesson_source)) + "</p>"
+            + "<h2>课标全文</h2><p>" + escape(retrieval.standard_text) + "</p>"
+            + "<p>课标来源：" + escape(_source_text(retrieval.standard_source)) + "</p></section>"
+        )
+    if retrieval is None:
         return ""
     return (
-        "<section><h2>课时原文</h2><p>" + escape(retrieval.lesson_text) + "</p>"
-        + "<p>教材来源：" + escape(_source_text(retrieval.lesson_source)) + "</p>"
-        + "<h2>课标全文</h2><p>" + escape(retrieval.standard_text) + "</p>"
+        "<section><h2>课标全文</h2><p>" + escape(retrieval.standard_text) + "</p>"
         + "<p>课标来源：" + escape(_source_text(retrieval.standard_source)) + "</p></section>"
     )
 
