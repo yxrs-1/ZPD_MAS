@@ -155,7 +155,8 @@ def _class_of(room: Classroom, account: str) -> str:
 
 
 def _student_page(room: Classroom, account: str, class_id: str) -> StudentPage:
-    if account not in room.student_pages:
+    page = room.student_pages.get(account)
+    if page is None or page.catalog._class_id != class_id:
         page = StudentPage(
             StudentView(room.catalog, room.classwork, account, class_id),
             room.student.decision,
@@ -164,17 +165,13 @@ def _student_page(room: Classroom, account: str, class_id: str) -> StudentPage:
             show_logout=True,
         )
         room.student_pages[account] = page
-    room.student = room.student_pages[account]
-    return room.student_pages[account]
+    room.student = page
+    return page
 
 
 def _clear_pages(room: Classroom, accounts) -> None:
     for account in accounts:
-        student_page = room.student_pages.get(account)
-        if student_page is None:
-            continue
-        student_page.sessions.clear()
-        student_page.shown_at.clear()
+        room.student_pages.pop(account, None)
 
 
 def _release_unassigned_sessions(room: Classroom, task_id: str) -> None:

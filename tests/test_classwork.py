@@ -327,3 +327,38 @@ def test_a_remove_posted_to_another_class_keeps_the_student_answer():
     assert "学生不存在" in text(missing)
     assert page.student_pages["s1"].catalog.work("task-1").answers[0].text == "甲的答案"
     assert page.roster.authenticate_student("s1", "secret") is not None
+
+
+def test_a_student_moved_to_another_class_sees_that_class_task():
+    page = room()
+    headers = teacher_cookie(page)
+    response_for(page, "POST", "/teacher/classes", form(action="创建", name="一班"), 0, headers)
+    response_for(page, "POST", "/teacher/classes", form(action="创建", name="二班"), 0, headers)
+    page.roster.import_rows("class-1", ((2, "s1", "secret", "甲"),))
+    response_for(page, "POST", "/teacher/tasks", "", 0, headers)
+    response_for(page, "POST", "/teacher/tasks", "", 0, headers)
+    for task_id, prompt in (("task-1", "写出组成"), ("task-2", "另一题")):
+        response_for(page, "POST", "/teacher/tasks/" + task_id, form(**{
+            "kind-0": "综合",
+            "prompt-0": prompt,
+            "requirements-0": "覆盖五类组成",
+            "answer-0": "",
+            "explanation-0": "",
+            "action": "save",
+        }), 0, headers)
+        response_for(page, "POST", "/teacher/tasks/" + task_id, form(action="publish"), 0, headers)
+    page.classwork.assign(page.catalog, "task-1", ("class-1",))
+    cookie = student_cookie(page, "s1", "secret", "甲")
+    response_for(page, "GET", "/student/tasks/task-1", "", 1, cookie)
+
+    response_for(
+        page, "POST", "/teacher/classes/class-1/students/s1", form(action="移除"), 2, headers
+    )
+    page.roster.import_rows("class-2", ((2, "s1", "secret", "甲"),))
+    page.classwork.assign(page.catalog, "task-2", ("class-2",))
+
+    listed = text(response_for(page, "GET", "/student", "", 3, cookie))
+
+    assert "task-2" in listed
+    assert "待办" in listed
+    assert "task-1" not in listed
