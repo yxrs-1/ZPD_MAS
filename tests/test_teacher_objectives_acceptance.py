@@ -59,7 +59,9 @@ def test_a_new_classroom_does_not_see_another_knowledge_base_or_objectives():
     assert second.teacher.objectives is second.objectives
 
 
-def test_production_prepares_the_model_records_without_calling_them():
+def test_production_prepares_the_model_records_without_calling_them(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
     def post(_request):
         raise AssertionError("network")
 

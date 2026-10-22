@@ -28,7 +28,9 @@ def test_the_classroom_links_generation_from_objectives_only():
     assert "任务不存在" in text(student)
 
 
-def test_production_prepares_the_text_generator_without_calling_it():
+def test_production_prepares_the_text_generator_without_calling_it(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
     def post(_request):
         raise AssertionError("network")
 

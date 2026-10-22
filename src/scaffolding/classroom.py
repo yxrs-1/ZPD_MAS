@@ -1,10 +1,12 @@
 import email
+import os
 import secrets
 import time
 from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
+import scaffolding.store as store
 from scaffolding.class_page import class_asset, class_response, missing_task_page
 from scaffolding.classwork import Classwork, StudentView
 from scaffolding.generation import TaskGeneration
@@ -16,6 +18,7 @@ from scaffolding.model_text import ModelTextGenerator
 from scaffolding.model_scaffold import ModelScaffoldAgent
 from scaffolding.objectives import ObjectiveCatalog
 from scaffolding.roster import Roster, RosterError
+from scaffolding.session import Session
 from scaffolding.student_page import StudentPage
 from scaffolding.tasks import TaskCatalog
 from scaffolding.student_page import response_for as student_response_for
@@ -38,6 +41,8 @@ class Classroom:
         knowledge=None,
         objectives=None,
         generation=None,
+        *,
+        path=None,
     ) -> None:
         self.catalog = catalog
         self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
@@ -62,9 +67,33 @@ class Classroom:
             classwork=self.classwork,
         )
         self.student = StudentPage(catalog, decision, scaffold_agent, prefix="/student")
+        self.path = None if path is None else os.fspath(path)
+        self.saved_sessions = {}
+        if self.path is not None:
+            if os.path.isfile(self.path):
+                store.load_classroom(self.path, self)
+            else:
+                store.save_classroom(self.path, self)
 
 
 def response_for(
+    room: Classroom,
+    method: str,
+    path: str,
+    body: str,
+    now: float,
+    headers: str = "",
+    uploads=None,
+):
+    tracking = room.path is not None
+    before = store.classroom_state(room) if tracking else None
+    response = _dispatch_response(room, method, path, body, now, headers, uploads)
+    if before is not None and store.classroom_state(room) != before:
+        return _commit(room, response, path, headers)
+    return response
+
+
+def _dispatch_response(
     room: Classroom,
     method: str,
     path: str,
@@ -177,9 +206,70 @@ def _student_page(room: Classroom, account: str, class_id: str) -> StudentPage:
             prefix="/student",
             show_logout=True,
         )
+        _restore_saved_sessions(room, page, account)
         room.student_pages[account] = page
     room.student = page
     return page
+
+
+def _restore_saved_sessions(room: Classroom, page, account: str) -> None:
+    for task_id, item in room.saved_sessions.get(account, {}).items():
+        try:
+            work = page.catalog.work(task_id)
+        except KeyError:
+            continue
+        page.sessions[task_id] = Session.restore(
+            page.catalog,
+            work,
+            page.decision,
+            page.scaffold_agent,
+            item["presets"],
+            item["scaffold"],
+        )
+
+
+def _commit(room: Classroom, response, path: str, headers: str):
+    try:
+        store.save_classroom(room.path, room)
+    except OSError:
+        store.load_classroom(room.path, room)
+        fresh = _rerender_teacher(room, path, headers)
+        return _inject_failure(fresh if fresh is not None else response)
+    return response
+
+
+def _rerender_teacher(room: Classroom, path: str, headers: str):
+    raw_path = urlsplit(path).path
+    parts = [part for part in raw_path.split("/") if part]
+    if not parts or parts[0] != "teacher" or (len(parts) >= 2 and parts[1] == "login"):
+        return None
+    token = _cookie_value(headers, "teacher")
+    if token not in room.teacher_tokens:
+        return _html(_login_page("/teacher/login"))
+    rest = raw_path[len("/teacher"):] or "/"
+    if not rest.startswith("/"):
+        rest = "/" + rest
+    if len(parts) >= 2 and parts[1] == "classes":
+        html = class_response(room, "GET", rest, {}, {})
+        if html == "":
+            title = "学生不存在" if len(parts) >= 4 and parts[3] == "students" else "班级不存在"
+            return _html(_document("<h1>" + title + "</h1>"), 404)
+        return _html(html)
+    return teacher_response_for(room.teacher, "GET", rest, "")
+
+
+def _inject_failure(response):
+    try:
+        body = response.body.decode("utf-8")
+    except UnicodeDecodeError:
+        return response
+    if "没有写入文件" in body:
+        return response
+    if "</body>" in body:
+        body = body.replace("</body>", "<p>没有写入文件</p></body>", 1)
+    else:
+        body += "没有写入文件"
+    return replace(response, body=body.encode("utf-8"))
 
 
 def _clear_pages(room: Classroom, accounts) -> None:
@@ -379,6 +469,7 @@ def production_classroom(*, post, api_key=None) -> Classroom:
         knowledge,
         objectives,
         generation,
+        path=os.path.abspath("classroom.json"),
     )
 
 

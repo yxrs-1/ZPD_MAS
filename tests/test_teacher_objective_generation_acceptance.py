@@ -73,11 +73,15 @@ def test_the_classroom_generates_from_saved_objectives():
     assert 'value="按目标生成"' in viewed
 
 
-def test_production_still_prepares_the_text_generator_without_calling_it():
+def test_production_still_prepares_the_text_generator_without_calling_it(tmp_path, monkeypatch):
+    repo = Path.cwd()
+    monkeypatch.chdir(tmp_path)
+
     def post(_request):
         raise AssertionError("network")
 
     room = production_classroom(post=post)
+    monkeypatch.chdir(repo)
 
     assert isinstance(room.generation._text_generator, ModelTextGenerator)
     assert room.teacher.generation is room.generation
