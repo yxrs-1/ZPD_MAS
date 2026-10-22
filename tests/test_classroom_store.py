@@ -65,6 +65,37 @@ def _room(path, decision=None, scaffold=None):
     return Classroom(catalog, decision, scaffold, knowledge, objectives, generation, path=path)
 
 
+def _assigned_student(tmp_path):
+    path = tmp_path / "classroom.json"
+    page = _room(path)
+    headers = teacher_cookie(page)
+    response_for(page, "POST", "/teacher/classes", form(action="创建", name="一班"), 0, headers)
+    response_for(
+        page, "POST", "/teacher/classes/class-1", form(action="导入"), 0, headers,
+        uploads={"file": _xlsx((("账号", "密码", "姓名"), ("s1", "secret", "甲")))},
+    )
+    response_for(page, "POST", "/teacher/tasks", "", 0, headers)
+    response_for(page, "POST", "/teacher/tasks/task-1", form(**{
+        "kind-0": "判断",
+        "prompt-0": "判断说法",
+        "selected-0": "正确",
+        "explanation-0": "题目里有依据",
+        "action": "save",
+    }), 0, headers)
+    response_for(page, "POST", "/teacher/tasks/task-1", form(action="publish"), 0, headers)
+    response_for(page, "POST", "/teacher/tasks/task-1", form(action="布置", class_id="class-1"), 0, headers)
+    student = response_for(page, "POST", "/student/login", form(account="s1", password="secret"), 0)
+    return page, path, _cookie(student)
+
+
+def _fail_saves(monkeypatch):
+    def fail(target, room):
+        raise OSError("disk full")
+
+    import scaffolding.store as store
+    monkeypatch.setattr(store, "save_classroom", fail)
+
+
 def test_restore_does_not_ask_the_decision_agent():
     catalog = TaskCatalog()
     task = catalog.create((TrueFalseQuestion("判断说法", "正确", "题目里有依据"),))
@@ -225,6 +256,68 @@ def test_a_failed_write_keeps_the_previous_classroom(tmp_path, monkeypatch):
     assert "一班" in blob
     assert "二班" not in blob
     assert {item.name for item in path.parent.iterdir()} == {"classroom.json"}
+
+
+def test_a_failed_student_answer_redraws_from_the_restored_room(tmp_path, monkeypatch):
+    page, path, student_header = _assigned_student(tmp_path)
+    response_for(page, "GET", "/student/tasks/task-1", "", 0, student_header)
+    _fail_saves(monkeypatch)
+
+    failed = response_for(
+        page, "POST", "/student/tasks/task-1/answers",
+        form(**{"selected-0": "正确"}), 0, student_header,
+    )
+    body = text(failed)
+    second = _room(path)
+
+    assert "没有写入文件" in body
+    assert 'value="正确" checked' not in body
+    assert second.classwork._works[("s1", "task-1")].answers[0].selected == ()
+
+
+def test_a_failed_student_help_redraws_from_the_restored_room(tmp_path, monkeypatch):
+    page, path, student_header = _assigned_student(tmp_path)
+    response_for(page, "GET", "/student/tasks/task-1", "", 0, student_header)
+    _fail_saves(monkeypatch)
+
+    failed = response_for(
+        page, "POST", "/student/tasks/task-1/ask",
+        form(question="先看题目", source="预设提问"), 0, student_header,
+    )
+    body = text(failed)
+    second = _room(path)
+
+    assert "没有写入文件" in body
+    assert "先看人员和硬件" not in body
+    assert second.classwork._works[("s1", "task-1")].dialogue == ()
+
+
+def test_a_failed_student_submit_redraws_from_the_restored_room(tmp_path, monkeypatch):
+    page, path, student_header = _assigned_student(tmp_path)
+    response_for(page, "GET", "/student/tasks/task-1", "", 0, student_header)
+    _fail_saves(monkeypatch)
+
+    failed = response_for(page, "POST", "/student/tasks/task-1/submit", "", 0, student_header)
+    body = text(failed)
+    second = _room(path)
+
+    assert "没有写入文件" in body
+    assert "已完成" not in body
+    assert "参考答案" not in body
+    assert second.classwork._works[("s1", "task-1")].submitted is False
+
+
+def test_a_failed_student_open_redraws_from_the_restored_room(tmp_path, monkeypatch):
+    page, path, student_header = _assigned_student(tmp_path)
+    _fail_saves(monkeypatch)
+
+    failed = response_for(page, "GET", "/student/tasks/task-1", "", 0, student_header)
+    body = text(failed)
+    second = _room(path)
+
+    assert "没有写入文件" in body
+    assert "判断说法" not in body
+    assert ("s1", "task-1") not in second.classwork._works
 
 
 def test_a_failed_replace_leaves_the_previous_file(tmp_path, monkeypatch):

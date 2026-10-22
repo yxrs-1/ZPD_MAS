@@ -234,6 +234,8 @@ def _commit(room: Classroom, response, path: str, headers: str):
     except OSError:
         store.load_classroom(room.path, room)
         fresh = _rerender_teacher(room, path, headers)
+        if fresh is None:
+            fresh = _rerender_student(room, path, headers)
         return _inject_failure(fresh if fresh is not None else response)
     return response
 
@@ -256,6 +258,31 @@ def _rerender_teacher(room: Classroom, path: str, headers: str):
             return _html(_document("<h1>" + title + "</h1>"), 404)
         return _html(html)
     return teacher_response_for(room.teacher, "GET", rest, "")
+
+
+def _rerender_student(room: Classroom, path: str, headers: str):
+    raw_path = urlsplit(path).path
+    parts = [part for part in raw_path.split("/") if part]
+    if not parts or parts[0] != "student" or (len(parts) >= 2 and parts[1] == "login"):
+        return None
+    token = _cookie_value(headers, "student")
+    account = room.student_tokens.get(token)
+    if account is None:
+        return _html(_login_page("/student/login"))
+    student_page = _student_page(room, account, _class_of(room, account))
+    if len(parts) >= 3 and parts[1] == "tasks":
+        task_id = unquote(parts[2])
+        if not _student_visible(room, task_id):
+            return _html(_document("<h1>任务不存在</h1>"), 404)
+        try:
+            student_page.catalog.work(task_id)
+        except KeyError:
+            return student_response_for(student_page, "GET", "/", "", 0)
+        return student_response_for(student_page, "GET", "/tasks/" + task_id, "", 0)
+    rest = raw_path[len("/student"):] or "/"
+    if not rest.startswith("/"):
+        rest = "/" + rest
+    return student_response_for(student_page, "GET", rest, "", 0)
 
 
 def _inject_failure(response):
