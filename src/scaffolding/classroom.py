@@ -1,6 +1,7 @@
 import email
 import os
 import secrets
+import threading
 import time
 from dataclasses import dataclass, replace
 from html import escape
@@ -44,6 +45,7 @@ class Classroom:
         *,
         path=None,
     ) -> None:
+        self._lock = threading.RLock()
         self.catalog = catalog
         self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
         self.objectives = (
@@ -85,12 +87,13 @@ def response_for(
     headers: str = "",
     uploads=None,
 ):
-    tracking = room.path is not None
-    before = store.classroom_state(room) if tracking else None
-    response = _dispatch_response(room, method, path, body, now, headers, uploads)
-    if before is not None and store.classroom_state(room) != before:
-        return _commit(room, response, path, headers, now)
-    return response
+    with room._lock:
+        tracking = room.path is not None
+        before = store.classroom_state(room) if tracking else None
+        response = _dispatch_response(room, method, path, body, now, headers, uploads)
+        if before is not None and store.classroom_state(room) != before:
+            return _commit(room, response, path, headers, now)
+        return response
 
 
 def _dispatch_response(
