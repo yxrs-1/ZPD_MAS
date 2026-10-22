@@ -27,6 +27,7 @@ class PageResponse:
     status: int
     content_type: str
     body: bytes
+    set_cookie: str = ""
 
 
 class _EmptyExtractor:
@@ -35,32 +36,19 @@ class _EmptyExtractor:
 
 
 class TeacherPage:
-    def __init__(self, catalog, prefix: str = "", *, knowledge=None, objectives=None, generation=None) -> None:
+    def __init__(self, catalog, prefix: str = "", roster=None, *, knowledge=None, objectives=None, generation=None) -> None:
         self.catalog = catalog
         self.drafts = {}
         self.prefix = prefix
+        self.roster = roster
         self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
         self.objectives = (
             objectives if objectives is not None else ObjectiveCatalog(self.knowledge, _EmptyExtractor())
         )
         self.generation = generation
 
-    def list_tasks(self) -> str:
-        items = []
-        for task in self.catalog._tasks.values():
-            href = _with_prefix(self.prefix, "/tasks/" + quote(task.task_id, safe=""))
-            items.append(
-                "<li><a href=\"" + href + "\">" + escape(task.task_id)
-                + "</a> " + escape(_fact(task)) + "</li>"
-            )
-        body = (
-            "<h1>任务列表</h1><form method=\"post\" action=\""
-            + _with_prefix(self.prefix, "/tasks") + "\">"
-            + "<button type=\"submit\">新建</button></form>"
-            + "<a href=\"" + _with_prefix(self.prefix, "/objectives") + "\">目标</a><ul>"
-            + "".join(items) + "</ul>"
-        )
-        return _document(body)
+    def list_tasks(self, message: str = "") -> str:
+        return _render_list(self, message)
 
     def open_objectives(self, message: str = "") -> str:
         return _render_objectives(self, None, message)
@@ -139,6 +127,41 @@ class TeacherPage:
 
 def _with_prefix(prefix: str, path: str) -> str:
     return prefix + path
+
+
+def _render_list(page: TeacherPage, message: str = "") -> str:
+    items = []
+    for task in page.catalog._tasks.values():
+        href = _with_prefix(page.prefix, "/tasks/" + quote(task.task_id, safe=""))
+        items.append(
+            "<li><a href=\"" + href + "\">" + escape(task.task_id)
+            + "</a> " + escape(_fact(task)) + "</li>"
+        )
+    extra = ""
+    if page.roster is not None:
+        action = page.prefix if page.prefix else "/"
+        extra = (
+            "<a href=\"" + _with_prefix(page.prefix, "/classes") + "\">班级</a>"
+            + "<form method=\"post\" action=\"" + action + "\">"
+            + "<input name=\"old_password\">"
+            + "<input name=\"password\">"
+            + "<button type=\"submit\" name=\"action\" value=\"修改密码\">修改密码</button></form>"
+            + "<form method=\"post\" action=\"" + action + "\">"
+            + "<button type=\"submit\" name=\"action\" value=\"退出\">退出</button></form>"
+        )
+    notice = ""
+    if message:
+        notice = "<p>" + escape(message) + "</p>"
+    body = (
+        "<h1>任务列表</h1>" + notice
+        + "<form method=\"post\" action=\""
+        + _with_prefix(page.prefix, "/tasks") + "\">"
+        + "<button type=\"submit\">新建</button></form>"
+        + "<a href=\"" + _with_prefix(page.prefix, "/objectives") + "\">目标</a>"
+        + extra
+        + "<ul>" + "".join(items) + "</ul>"
+    )
+    return _document(body)
 
 
 def _fact(task) -> str:

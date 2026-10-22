@@ -7,7 +7,7 @@ from scaffolding.model_generator import ModelQuestionGenerator
 from scaffolding.objectives import ObjectiveCatalog
 from scaffolding.scripted import ScriptedDecisionAgent, ScriptedScaffoldAgent
 from scaffolding.tasks import TaskCatalog
-from tests.classroom_helpers import text
+from tests.classroom_helpers import student_cookie, teacher_cookie, text
 from tests.objective_helpers import ScriptedExtractor, sample_base
 
 
@@ -25,9 +25,9 @@ def test_the_classroom_prefixes_objectives_and_hides_them_from_the_student():
     )
 
     home = text(response_for(room, "GET", "/", "", 0))
-    listed = text(response_for(room, "GET", "/teacher", "", 0))
-    opened = text(response_for(room, "GET", "/teacher/objectives/?ready=1", "", 0))
-    student = response_for(room, "GET", "/student/objectives", "", 1)
+    listed = text(response_for(room, "GET", "/teacher", "", 0, teacher_cookie(room)))
+    opened = text(response_for(room, "GET", "/teacher/objectives/?ready=1", "", 0, teacher_cookie(room)))
+    student = response_for(room, "GET", "/student/objectives", "", 1, student_cookie(room))
 
     assert "目标" not in home
     assert 'href="/teacher/objectives"' in listed

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from scaffolding.classroom import production_classroom, response_for, serve
 from scaffolding.model_text import ModelTextGenerator
-from tests.classroom_helpers import text
+from tests.classroom_helpers import student_cookie, teacher_cookie, text
 
 
 def test_the_classroom_links_generation_from_objectives_only():
@@ -13,10 +13,10 @@ def test_the_classroom_links_generation_from_objectives_only():
     room = Classroom(TaskCatalog(), ScriptedDecisionAgent(), ScriptedScaffoldAgent())
 
     home = text(response_for(room, "GET", "/", "", 0))
-    listed = text(response_for(room, "GET", "/teacher", "", 0))
-    objectives = text(response_for(room, "GET", "/teacher/objectives/", "", 0))
-    opened = text(response_for(room, "GET", "/teacher/generation?ready=1", "", 0))
-    student = response_for(room, "GET", "/student/generation", "", 1)
+    listed = text(response_for(room, "GET", "/teacher", "", 0, teacher_cookie(room)))
+    objectives = text(response_for(room, "GET", "/teacher/objectives/", "", 0, teacher_cookie(room)))
+    opened = text(response_for(room, "GET", "/teacher/generation?ready=1", "", 0, teacher_cookie(room)))
+    student = response_for(room, "GET", "/student/generation", "", 1, student_cookie(room))
 
     assert 'href="/teacher/generation"' not in home
     assert 'href="/teacher/generation"' not in listed
