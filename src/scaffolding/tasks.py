@@ -153,3 +153,15 @@ class TaskCatalog:
 
     def work(self, task_id: str) -> StudentWork:
         return self._works[task_id]
+
+    def note_started(self, task_id: str) -> Task:
+        task = self.get(task_id)
+        updated = replace(task, started=True)
+        self._tasks[task_id] = updated
+        return updated
+
+    def note_idle(self, task_id: str) -> Task:
+        task = self.get(task_id)
+        updated = replace(task, started=False)
+        self._tasks[task_id] = updated
+        return updated

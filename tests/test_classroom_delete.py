@@ -15,8 +15,10 @@ def _started(page):
         "action": "save",
     }), 0, teacher_cookie(page))
     response_for(page, "POST", "/teacher/tasks/task-1", form(action="publish"), 0, teacher_cookie(page))
-    response_for(page, "GET", "/student/tasks/task-1", "", 3, student_cookie(page))
-    response_for(page, "POST", "/student/tasks/task-1/answers", form(**{"text-0": "学生写下的答案"}), 4, student_cookie(page))
+    cookie = student_cookie(page)
+    page.classwork.assign(page.catalog, "task-1", (page.roster.authenticate_student("s1", "secret").class_id,))
+    response_for(page, "GET", "/student/tasks/task-1", "", 3, cookie)
+    response_for(page, "POST", "/student/tasks/task-1/answers", form(**{"text-0": "学生写下的答案"}), 4, cookie)
 
 
 def test_delete_removes_the_student_session_and_later_requests_do_not_rebuild_it():
@@ -43,6 +45,8 @@ def test_delete_removes_the_student_session_and_later_requests_do_not_rebuild_it
         page.catalog.get("task-1")
     with pytest.raises(KeyError):
         page.catalog.work("task-1")
+    assert page.classwork.assigned("task-1") == ()
+    assert page.classwork.any_started("task-1") is False
 
 
 def test_submit_leaves_the_teacher_page_without_the_student_answer():

@@ -1,3 +1,5 @@
+import pytest
+
 from scaffolding.classroom import response_for
 from tests.classroom_helpers import form, room, student_cookie, teacher_cookie, text
 
@@ -34,6 +36,8 @@ def test_publishing_shows_the_task_and_opening_starts_it():
     page = room()
     _save(page)
     response_for(page, "POST", "/teacher/tasks/task-1", form(action="publish"), 0, teacher_cookie(page))
+    student_cookie(page)
+    page.classwork.assign(page.catalog, "task-1", (page.roster.authenticate_student("s1", "secret").class_id,))
 
     student = text(response_for(page, "GET", "/student", "", 0, student_cookie(page)))
     opened = text(response_for(page, "GET", "/student/tasks/task-1", "", 10, student_cookie(page)))
@@ -47,7 +51,9 @@ def test_publishing_shows_the_task_and_opening_starts_it():
     assert "参考答案" not in opened
     assert "解析" not in opened
     assert page.student.shown_at["task-1"] == 10
-    assert page.catalog.work("task-1").behavior.dwell_seconds == 0
+    assert page.student.catalog.work("task-1").behavior.dwell_seconds == 0
+    with pytest.raises(KeyError):
+        page.catalog.work("task-1")
     assert "已开始" in teacher
     assert missing.status == 404
     assert missing.body == b""
@@ -79,8 +85,10 @@ def test_a_teacher_draft_is_not_visible_to_the_student():
         "prompt-1": "草稿里的新题干",
         "action": "add-option:1",
     }), 0, teacher_cookie(page))
+    cookie = student_cookie(page)
+    page.classwork.assign(page.catalog, "task-1", (page.roster.authenticate_student("s1", "secret").class_id,))
 
-    opened = text(response_for(page, "GET", "/student/tasks/task-1", "", 5, student_cookie(page)))
+    opened = text(response_for(page, "GET", "/student/tasks/task-1", "", 5, cookie))
 
     assert "判断说法" in opened
     assert "草稿里的新题干" not in opened

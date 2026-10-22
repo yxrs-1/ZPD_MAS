@@ -3,9 +3,10 @@ import secrets
 import time
 from dataclasses import replace
 from html import escape
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 from scaffolding.class_page import class_response
+from scaffolding.classwork import Classwork, StudentView
 from scaffolding.generation import TaskGeneration
 from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
@@ -47,6 +48,7 @@ class Classroom:
         )
         self.generation = generation
         self.roster = Roster()
+        self.classwork = Classwork(self.roster)
         self.teacher_tokens = set()
         self.student_tokens = {}
         self.student_pages = {}
@@ -57,6 +59,7 @@ class Classroom:
             knowledge=self.knowledge,
             objectives=self.objectives,
             generation=generation,
+            classwork=self.classwork,
         )
         self.student = StudentPage(catalog, decision, scaffold_agent, prefix="/student")
 
@@ -143,10 +146,18 @@ def _teacher_login(room: Classroom, body: str):
     return replace(response, set_cookie=_set_cookie("teacher", token, "/teacher"))
 
 
-def _student_page(room: Classroom, account: str) -> StudentPage:
+def _class_of(room: Classroom, account: str) -> str:
+    for item in room.roster.classes():
+        for student in room.roster.students(item.class_id):
+            if student.account == account:
+                return item.class_id
+    return ""
+
+
+def _student_page(room: Classroom, account: str, class_id: str) -> StudentPage:
     if account not in room.student_pages:
         page = StudentPage(
-            room.catalog,
+            StudentView(room.catalog, room.classwork, account, class_id),
             room.student.decision,
             room.student.scaffold_agent,
             prefix="/student",
@@ -155,6 +166,23 @@ def _student_page(room: Classroom, account: str) -> StudentPage:
         room.student_pages[account] = page
     room.student = room.student_pages[account]
     return room.student_pages[account]
+
+
+def _clear_pages(room: Classroom, accounts) -> None:
+    for account in accounts:
+        student_page = room.student_pages.get(account)
+        if student_page is None:
+            continue
+        student_page.sessions.clear()
+        student_page.shown_at.clear()
+
+
+def _release_unassigned_sessions(room: Classroom, task_id: str) -> None:
+    assigned = set(room.classwork.assigned(task_id))
+    for account, student_page in room.student_pages.items():
+        if _class_of(room, account) not in assigned:
+            student_page.sessions.pop(task_id, None)
+            student_page.shown_at.pop(task_id, None)
 
 
 def _student_login(room: Classroom, body: str, now: float):
@@ -166,7 +194,7 @@ def _student_login(room: Classroom, body: str, now: float):
         return _html(_login_page("/student/login", "账号或密码不正确"))
     token = secrets.token_hex(16)
     room.student_tokens[token] = student.account
-    page = _student_page(room, student.account)
+    page = _student_page(room, student.account, student.class_id)
     response = student_response_for(page, "GET", "/", "", now)
     return replace(response, set_cookie=_set_cookie("student", token, "/student"))
 
@@ -231,6 +259,26 @@ def _teacher_response(
         return _html(_login_page("/teacher/login"))
     if len(parts) >= 2 and parts[1] == "classes":
         fields = parse_qs(body, keep_blank_values=True)
+        action = fields.get("action", [""])[-1]
+        if method == "POST" and action == "删除班级" and len(parts) >= 3:
+            class_id = unquote(parts[2])
+            try:
+                accounts = tuple(student.account for student in room.roster.students(class_id))
+            except RosterError:
+                accounts = None
+            if accounts is not None:
+                room.classwork.drop_class(class_id)
+                _clear_pages(room, accounts)
+        if method == "POST" and action == "移除" and len(parts) >= 5 and parts[3] == "students":
+            class_id = unquote(parts[2])
+            account = unquote(parts[4])
+            try:
+                room.roster.student(class_id, account)
+            except RosterError:
+                pass
+            else:
+                room.classwork.drop_student(account)
+                _clear_pages(room, (account,))
         html = class_response(room, method, rest, fields, uploads or {})
         if html == "":
             title = "学生不存在" if len(parts) >= 4 and parts[3] == "students" else "班级不存在"
@@ -261,6 +309,8 @@ def _teacher_response(
             for student_page in room.student_pages.values():
                 student_page.sessions.pop(task_id, None)
                 student_page.shown_at.pop(task_id, None)
+        if action == "布置" and task_id in room.catalog._tasks:
+            _release_unassigned_sessions(room, task_id)
     return response
 
 
@@ -271,7 +321,7 @@ def _student_response(room: Classroom, method: str, parts: list, rest: str, body
     account = room.student_tokens.get(token)
     if account is None:
         return _html(_login_page("/student/login"))
-    student_page = _student_page(room, account)
+    student_page = _student_page(room, account, _class_of(room, account))
     if method == "POST" and len(parts) == 1:
         fields = parse_qs(body, keep_blank_values=True)
         action = fields.get("action", [""])[-1]
