@@ -1,11 +1,11 @@
 import email
 import secrets
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
-from scaffolding.class_page import class_response
+from scaffolding.class_page import class_asset, class_response, missing_task_page
 from scaffolding.classwork import Classwork, StudentView
 from scaffolding.generation import TaskGeneration
 from scaffolding.knowledge import KnowledgeBase
@@ -99,8 +99,21 @@ def _document(body: str) -> str:
     return "<!DOCTYPE html><html lang=\"zh\"><body>" + body + "</body></html>"
 
 
+@dataclass(frozen=True)
+class _Download:
+    status: int
+    content_type: str
+    body: bytes
+    set_cookie: str = ""
+    filename: str = ""
+
+
 def _html(text: str, status: int = 200, set_cookie: str = "") -> PageResponse:
     return PageResponse(status, "text/html; charset=utf-8", text.encode(), set_cookie)
+
+
+def _download(content: bytes, status: int = 200, filename: str = "") -> _Download:
+    return _Download(status, "application/octet-stream", content, filename=filename)
 
 
 def _login_page(action: str, message: str = "") -> str:
@@ -255,6 +268,12 @@ def _teacher_response(
     if token not in room.teacher_tokens:
         return _html(_login_page("/teacher/login"))
     if len(parts) >= 2 and parts[1] == "classes":
+        if method == "GET" and _is_class_asset(parts):
+            found = class_asset(room, rest)
+            if found is None:
+                return _download(b"", 404)
+            filename, content = found
+            return _download(content, 200, filename)
         fields = parse_qs(body, keep_blank_values=True)
         action = fields.get("action", [""])[-1]
         if method == "POST" and action == "删除班级" and len(parts) >= 3:
@@ -280,7 +299,8 @@ def _teacher_response(
         if html == "":
             title = "学生不存在" if len(parts) >= 4 and parts[3] == "students" else "班级不存在"
             return _html(_document("<h1>" + title + "</h1>"), 404)
-        return _html(html)
+        status = 404 if html == missing_task_page() else 200
+        return _html(html, status)
     if method == "POST" and len(parts) == 1:
         fields = parse_qs(body, keep_blank_values=True)
         action = fields.get("action", [""])[-1]
@@ -309,6 +329,14 @@ def _teacher_response(
         if action == "布置" and task_id in room.catalog._tasks:
             _release_unassigned_sessions(room, task_id)
     return response
+
+
+def _is_class_asset(parts: list) -> bool:
+    if parts[1] != "classes" or len(parts) < 8 or parts[3] != "students" or parts[5] != "tasks":
+        return False
+    if len(parts) == 9 and parts[7] == "assets":
+        return True
+    return len(parts) == 11 and parts[7] == "turns" and parts[9] == "assets"
 
 
 def _student_response(room: Classroom, method: str, parts: list, rest: str, body: str, now: float, headers: str):

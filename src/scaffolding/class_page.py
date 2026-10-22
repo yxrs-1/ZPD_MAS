@@ -1,6 +1,8 @@
 from html import escape
 from urllib.parse import quote, unquote, urlsplit
 
+from scaffolding.classwork import StudentView
+from scaffolding.records import ChoiceQuestion, OpenQuestion, TrueFalseQuestion
 from scaffolding.roster import RosterError
 from scaffolding.sheet import SheetError, read_student_rows
 
@@ -24,20 +26,23 @@ def class_response(page, method, path, fields, uploads) -> str:
             page.roster.delete_class(class_id)
             return _list(page)
         return _class_page(page, class_id)
-    if len(parts) == 4 and parts[2] == "students":
+    if len(parts) >= 4 and parts[2] == "students":
         account = parts[3]
         try:
             page.roster.student(class_id, account)
         except RosterError:
             return ""
-        if method == "POST" and action == "修改姓名":
-            return _rename(page, class_id, account, fields)
-        if method == "POST" and action == "重置密码":
-            return _reset(page, class_id, account, fields)
-        if method == "POST" and action == "移除":
-            page.roster.remove_student(class_id, account)
-            return _class_page(page, class_id)
-        return _student_page(page, class_id, account)
+        if len(parts) == 4:
+            if method == "POST" and action == "修改姓名":
+                return _rename(page, class_id, account, fields)
+            if method == "POST" and action == "重置密码":
+                return _reset(page, class_id, account, fields)
+            if method == "POST" and action == "移除":
+                page.roster.remove_student(class_id, account)
+                return _class_page(page, class_id)
+            return _student_page(page, class_id, account)
+        if len(parts) >= 6 and parts[4] == "tasks":
+            return _task_response(page, class_id, account, parts)
     return ""
 
 
@@ -154,6 +159,7 @@ def _student_page(page, class_id: str, account: str, message: str = "") -> str:
         + "<button type=\"submit\" name=\"action\" value=\"重置密码\">重置密码</button></form>"
         + "<form method=\"post\" action=\"" + action + "\">"
         + "<button type=\"submit\" name=\"action\" value=\"移除\">移除</button></form>"
+        + "<ul>" + "".join(_task_items(page, class_id, account)) + "</ul>"
     )
     return _document(body)
 
@@ -172,3 +178,175 @@ def _reset(page, class_id: str, account: str, fields) -> str:
         return _student_page(page, class_id, account, "密码已重置")
     except RosterError as error:
         return _student_page(page, class_id, account, str(error))
+
+
+def missing_task_page() -> str:
+    return _document("<h1>任务不存在</h1>")
+
+
+def class_asset(page, path: str) -> tuple[str, bytes] | None:
+    parts = [unquote(part) for part in urlsplit(path).path.split("/") if part]
+    if parts[:1] != ["classes"] or len(parts) < 8 or parts[2] != "students" or parts[4] != "tasks":
+        return None
+    class_id = parts[1]
+    account = parts[3]
+    task_id = parts[5]
+    try:
+        page.roster.student(class_id, account)
+    except RosterError:
+        return None
+    found = _assigned(page, class_id, account, task_id)
+    if found is None or found[1] is None:
+        return None
+    work = found[1]
+    if len(parts) == 8 and parts[6] == "assets":
+        return _named_asset(_current_scaffold(work), parts[7])
+    if len(parts) == 10 and parts[6] == "turns" and parts[8] == "assets" and parts[7].isdigit():
+        index = int(parts[7])
+        if index >= len(work.dialogue):
+            return None
+        return _named_asset(work.dialogue[index].scaffold, parts[9])
+    return None
+
+
+def _task_response(page, class_id: str, account: str, parts: list[str]) -> str:
+    if len(parts) != 6:
+        return ""
+    found = _assigned(page, class_id, account, parts[5])
+    if found is None:
+        return missing_task_page()
+    task, work = found
+    return _task_detail(class_id, account, task, work)
+
+
+def _task_items(page, class_id: str, account: str) -> list[str]:
+    view = _view(page, class_id, account)
+    action = _student_href(class_id, account)
+    items = []
+    for listed in view.student_tasks():
+        try:
+            work = view.work(listed.task_id)
+        except KeyError:
+            work = None
+        href = action + "/tasks/" + quote(listed.task_id, safe="")
+        items.append(
+            "<li><a href=\"" + href + "\">" + escape(listed.task_id)
+            + "</a> " + escape(_status(work)) + "</li>"
+        )
+    return items
+
+
+def _task_detail(class_id: str, account: str, task, work) -> str:
+    questions = task.questions if work is None else work.questions
+    parts = ["<h1>" + escape(task.task_id) + "</h1><p>" + escape(_status(work)) + "</p>"]
+    for index, question in enumerate(questions):
+        answer = None if work is None else work.answers[index]
+        parts.append(_read_question(question, answer))
+    if work is None:
+        return _document("".join(parts))
+    parts.append("<p>停留" + str(int(work.behavior.dwell_seconds)) + "</p>")
+    if work.behavior.helps:
+        parts.append("<h2>求助</h2><ul>")
+        for event in work.behavior.helps:
+            parts.append("<li>" + escape(event.text) + "</li>")
+        parts.append("</ul>")
+    base = _student_href(class_id, account) + "/tasks/" + quote(task.task_id, safe="")
+    current = _current_scaffold(work)
+    if current is not None:
+        parts.append("<h2>支架</h2>" + _scaffold_body(current, base + "/assets/"))
+    if work.dialogue:
+        parts.append("<h2>对话</h2>")
+        for index, turn in enumerate(work.dialogue):
+            parts.append(_turn(base, index, turn))
+    return _document("".join(parts))
+
+
+def _read_question(question, answer) -> str:
+    if isinstance(question, OpenQuestion):
+        given = "" if answer is None else answer.text
+        requirements = question.requirements
+    elif isinstance(question, (ChoiceQuestion, TrueFalseQuestion)):
+        given = "" if answer is None else "、".join(answer.selected)
+        requirements = ""
+    else:
+        raise TypeError("unknown question")
+    reference = question.answer if isinstance(question.answer, str) else "、".join(question.answer)
+    body = "<section><p>" + escape(question.prompt) + "</p>"
+    if requirements:
+        body += "<p>" + escape(requirements) + "</p>"
+    body += (
+        "<p>作答：" + escape(given) + "</p>"
+        + "<p>参考答案：" + escape(reference) + "</p>"
+        + "<p>解析：" + escape(question.explanation) + "</p></section>"
+    )
+    return body
+
+
+def _scaffold_body(scaffold, address_prefix: str) -> str:
+    parts = ["<p>" + escape(scaffold.text) + "</p>"]
+    for asset in scaffold.assets:
+        address = address_prefix + quote(asset.filename, safe="")
+        parts.append(
+            "<figure><figcaption>" + escape(asset.kind.value) + " " + escape(asset.filename)
+            + "</figcaption><img src=\"" + escape(address) + "\" alt=\"" + escape(asset.filename)
+            + "\"><a href=\"" + escape(address) + "\" download=\"" + escape(asset.filename)
+            + "\">保存</a></figure>"
+        )
+    return "".join(parts)
+
+
+def _turn(base: str, index: int, turn) -> str:
+    body = "<h3>" + escape(turn.question) + "</h3>"
+    if turn.scaffold is not None:
+        address = base + "/turns/" + str(index) + "/assets/"
+        body += "<div class=\"turn-scaffold\">" + _scaffold_body(turn.scaffold, address) + "</div>"
+    return "<article>" + body + "</article>"
+
+
+def _assigned(page, class_id: str, account: str, task_id: str):
+    view = _view(page, class_id, account)
+    try:
+        task = view.get(task_id)
+    except KeyError:
+        return None
+    try:
+        work = view.work(task_id)
+    except KeyError:
+        work = None
+    return task, work
+
+
+def _view(page, class_id: str, account: str) -> StudentView:
+    return StudentView(page.catalog, page.classwork, account, class_id)
+
+
+def _student_href(class_id: str, account: str) -> str:
+    return (
+        _prefix() + "/classes/" + quote(class_id, safe="")
+        + "/students/" + quote(account, safe="")
+    )
+
+
+def _status(work) -> str:
+    if work is None:
+        return "还没作答"
+    if work.submitted:
+        return "已完成"
+    return "待办"
+
+
+def _current_scaffold(work):
+    found = None
+    for turn in work.dialogue:
+        if turn.scaffold is not None:
+            found = turn.scaffold
+    return found
+
+
+def _named_asset(scaffold, filename: str) -> tuple[str, bytes] | None:
+    if scaffold is None:
+        return None
+    for asset in scaffold.assets:
+        if asset.filename == filename:
+            return asset.filename, asset.content
+    return None
