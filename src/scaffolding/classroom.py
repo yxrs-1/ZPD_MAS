@@ -89,7 +89,7 @@ def response_for(
     before = store.classroom_state(room) if tracking else None
     response = _dispatch_response(room, method, path, body, now, headers, uploads)
     if before is not None and store.classroom_state(room) != before:
-        return _commit(room, response, path, headers)
+        return _commit(room, response, path, headers, now)
     return response
 
 
@@ -228,14 +228,14 @@ def _restore_saved_sessions(room: Classroom, page, account: str) -> None:
         )
 
 
-def _commit(room: Classroom, response, path: str, headers: str):
+def _commit(room: Classroom, response, path: str, headers: str, now: float):
     try:
         store.save_classroom(room.path, room)
     except OSError:
         store.load_classroom(room.path, room)
         fresh = _rerender_teacher(room, path, headers)
         if fresh is None:
-            fresh = _rerender_student(room, path, headers)
+            fresh = _rerender_student(room, path, headers, now)
         return _inject_failure(fresh if fresh is not None else response)
     return response
 
@@ -260,7 +260,7 @@ def _rerender_teacher(room: Classroom, path: str, headers: str):
     return teacher_response_for(room.teacher, "GET", rest, "")
 
 
-def _rerender_student(room: Classroom, path: str, headers: str):
+def _rerender_student(room: Classroom, path: str, headers: str, now: float):
     raw_path = urlsplit(path).path
     parts = [part for part in raw_path.split("/") if part]
     if not parts or parts[0] != "student" or (len(parts) >= 2 and parts[1] == "login"):
@@ -277,12 +277,12 @@ def _rerender_student(room: Classroom, path: str, headers: str):
         try:
             student_page.catalog.work(task_id)
         except KeyError:
-            return student_response_for(student_page, "GET", "/", "", 0)
-        return student_response_for(student_page, "GET", "/tasks/" + task_id, "", 0)
+            return student_response_for(student_page, "GET", "/", "", now)
+        return student_response_for(student_page, "GET", "/tasks/" + task_id, "", now)
     rest = raw_path[len("/student"):] or "/"
     if not rest.startswith("/"):
         rest = "/" + rest
-    return student_response_for(student_page, "GET", rest, "", 0)
+    return student_response_for(student_page, "GET", rest, "", now)
 
 
 def _inject_failure(response):

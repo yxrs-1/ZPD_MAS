@@ -400,6 +400,44 @@ def test_a_failed_student_open_redraws_from_the_restored_room(tmp_path, monkeypa
     assert ("s1", "task-1") not in second.classwork._works
 
 
+def test_a_failed_student_save_keeps_the_request_time_for_dwell(tmp_path, monkeypatch):
+    page, path, student_header = _assigned_student(tmp_path)
+    response_for(page, "GET", "/student/tasks/task-1", "", 0, student_header)
+
+    import scaffolding.store as store
+    original = store.save_classroom
+    failed_once = {"done": False}
+
+    def fail_once(target, room):
+        if not failed_once["done"]:
+            failed_once["done"] = True
+            raise OSError("disk full")
+        return original(target, room)
+
+    monkeypatch.setattr(store, "save_classroom", fail_once)
+
+    failed = response_for(
+        page, "POST", "/student/tasks/task-1/answers",
+        form(**{"selected-0": "正确"}), 50, student_header,
+    )
+    body = text(failed)
+
+    assert "没有写入文件" in body
+    assert 'value="正确" checked' not in body
+    assert page.classwork._works[("s1", "task-1")].answers[0].selected == ()
+
+    response_for(
+        page, "POST", "/student/tasks/task-1/answers",
+        form(**{"selected-0": "正确"}), 55, student_header,
+    )
+
+    dwell = page.classwork._works[("s1", "task-1")].behavior.dwell_seconds
+    assert dwell == 5
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    work = next(item for item in saved["works"] if item["account"] == "s1")
+    assert work["behavior"]["dwell_seconds"] == 5
+
+
 def test_a_failed_replace_leaves_the_previous_file(tmp_path, monkeypatch):
     path = tmp_path / "classroom.json"
     page = _room(path)
