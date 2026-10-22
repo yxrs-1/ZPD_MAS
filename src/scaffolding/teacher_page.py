@@ -66,11 +66,13 @@ class TeacherPage:
         return _render_objectives(self, None, message)
 
     def apply_objectives(self, fields, action: str) -> str:
-        if action not in ("查看", "提炼", "修改", "删除"):
+        if action not in ("查看", "提炼", "修改", "删除", "按目标生成"):
             return self.open_objectives()
         query = _objective_query(fields)
         if query is None:
             return self.open_objectives("先填完整再查询")
+        if action == "按目标生成":
+            return _generate_from_objectives(self, query)
         if action == "提炼":
             return _extract_objectives(self, query)
         if action == "修改":
@@ -578,6 +580,12 @@ def _render_objectives(page, query, message: str) -> str:
             + "<input type=\"hidden\" name=\"objective\" value=\"" + escape(item.objective_id) + "\">"
             + "<button type=\"submit\" name=\"action\" value=\"删除\">删除</button></form></article>"
         )
+    if objectives:
+        parts.append(
+            "<form method=\"post\" action=\"" + action + "\">"
+            + _hidden_query(query)
+            + "<button type=\"submit\" name=\"action\" value=\"按目标生成\">按目标生成</button></form>"
+        )
     parts.append(_task_links(page, query))
     return _document("".join(parts))
 
@@ -618,6 +626,21 @@ def _delete_objective(page, query, fields) -> str:
     except ObjectiveRejected:
         return _render_objectives(page, query, "目标不存在")
     return _render_objectives(page, query, "")
+
+
+def _generate_from_objectives(page, query) -> str:
+    saved = _saved(page, query)
+    if saved == () or page.generation is None:
+        return _render_objectives(page, query, "生成失败，没有创建任务")
+    if query[0] == "课时":
+        origin = LessonOrigin(query[1], query[2], query[3])
+    else:
+        origin = StageOrigin(query[1])
+    try:
+        task = page.generation.generate_from_objectives(saved, origin)
+    except Exception:
+        return _render_objectives(page, query, "生成失败，没有创建任务")
+    return _render(page, task.task_id)
 
 
 def _extract_objectives(page, query) -> str:
