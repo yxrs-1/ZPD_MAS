@@ -199,13 +199,16 @@ def _apply_origins(room, data: dict) -> None:
 
 
 def _live_sessions(room) -> dict:
-    saved = {}
+    saved = {
+        account: dict(tasks)
+        for account, tasks in room.saved_sessions.items()
+    }
     for account, page in room.student_pages.items():
-        tasks = {}
+        if not page.sessions:
+            continue
+        tasks = saved.setdefault(account, {})
         for task_id, session in page.sessions.items():
             tasks[task_id] = {"presets": tuple(session._presets), "scaffold": session._scaffold}
-        if tasks:
-            saved[account] = tasks
     return saved
 
 
@@ -262,11 +265,22 @@ def _work_data(room, account: str, task_id: str, work: StudentWork) -> dict:
     }
 
 
+class _SavedSession:
+    def __init__(self, presets, scaffold) -> None:
+        self._presets = presets
+        self._scaffold = scaffold
+
+
 def _session_for(room, account: str, task_id: str):
     page = room.student_pages.get(account)
-    if page is None:
+    if page is not None:
+        session = page.sessions.get(task_id)
+        if session is not None:
+            return session
+    item = room.saved_sessions.get(account, {}).get(task_id)
+    if item is None:
         return None
-    return page.sessions.get(task_id)
+    return _SavedSession(item["presets"], item["scaffold"])
 
 
 def _question_data(question) -> dict:

@@ -49,6 +49,18 @@ class _RaisingDecision:
         raise AssertionError("choose")
 
 
+class _CountingDecision:
+    def __init__(self):
+        self.suggest_calls = 0
+
+    def suggest(self, record):
+        self.suggest_calls += 1
+        raise AssertionError("suggest")
+
+    def choose_type(self, record, question):
+        raise AssertionError("choose")
+
+
 def _cookie(response) -> str:
     return response.set_cookie.split(";", 1)[0]
 
@@ -86,6 +98,49 @@ def _assigned_student(tmp_path):
     response_for(page, "POST", "/teacher/tasks/task-1", form(action="布置", class_id="class-1"), 0, headers)
     student = response_for(page, "POST", "/student/login", form(account="s1", password="secret"), 0)
     return page, path, _cookie(student)
+
+
+def _two_scaffolded_students(tmp_path):
+    path = tmp_path / "classroom.json"
+    page = _room(path)
+    headers = teacher_cookie(page)
+    response_for(page, "POST", "/teacher/classes", form(action="创建", name="一班"), 0, headers)
+    response_for(
+        page, "POST", "/teacher/classes/class-1", form(action="导入"), 0, headers,
+        uploads={"file": _xlsx((("账号", "密码", "姓名"), ("s1", "secret", "甲"), ("s2", "secret", "乙")))},
+    )
+    response_for(page, "POST", "/teacher/tasks", "", 0, headers)
+    response_for(page, "POST", "/teacher/tasks/task-1", form(**{
+        "kind-0": "判断",
+        "prompt-0": "判断说法",
+        "selected-0": "正确",
+        "explanation-0": "题目里有依据",
+        "action": "save",
+    }), 0, headers)
+    response_for(page, "POST", "/teacher/tasks/task-1", form(action="publish"), 0, headers)
+    response_for(page, "POST", "/teacher/tasks/task-1", form(action="布置", class_id="class-1"), 0, headers)
+    for account in ("s1", "s2"):
+        student = response_for(page, "POST", "/student/login", form(account=account, password="secret"), 0)
+        cookie = _cookie(student)
+        response_for(page, "GET", "/student/tasks/task-1", "", 0, cookie)
+        response_for(
+            page, "POST", "/student/tasks/task-1/answers",
+            form(**{"selected-0": "正确"}), 0, cookie,
+        )
+        response_for(
+            page, "POST", "/student/tasks/task-1/ask",
+            form(question="先看题目", source="预设提问"), 0, cookie,
+        )
+    return path
+
+
+def _assert_restored(room, account, decision):
+    assert decision.suggest_calls == 0
+    session = room.student_pages[account].sessions["task-1"]
+    assert session.view().presets == ("先看题目", "作品还缺哪一部分？")
+    assert session.view().scaffold is not None
+    assert session.view().scaffold.text == "先看人员和硬件"
+    assert session.view().scaffold.assets[0].content == _RAW
 
 
 def _fail_saves(monkeypatch):
@@ -214,6 +269,31 @@ def test_the_saved_classroom_reloads_without_login_or_the_model(tmp_path):
     assert scaffold.calls == []
     assert asset.status == 200
     assert asset.body == _RAW
+
+
+def test_one_students_login_keeps_the_other_restored_session(tmp_path):
+    path = _two_scaffolded_students(tmp_path)
+    decision = _CountingDecision()
+    second = _room(path, decision)
+
+    response_for(second, "POST", "/student/login", form(account="s1", password="secret"), 0)
+    logged = response_for(second, "POST", "/student/login", form(account="s2", password="secret"), 0)
+    response_for(second, "GET", "/student/tasks/task-1", "", 0, _cookie(logged))
+
+    _assert_restored(second, "s2", decision)
+
+
+def test_a_teacher_save_keeps_both_students_for_session_restore(tmp_path):
+    path = _two_scaffolded_students(tmp_path)
+    decision = _CountingDecision()
+    second = _room(path, decision)
+    headers = teacher_cookie(second)
+    response_for(second, "POST", "/teacher/classes", form(action="创建", name="二班"), 0, headers)
+
+    for account in ("s1", "s2"):
+        logged = response_for(second, "POST", "/student/login", form(account=account, password="secret"), 0)
+        response_for(second, "GET", "/student/tasks/task-1", "", 0, _cookie(logged))
+        _assert_restored(second, account, decision)
 
 
 def test_removed_students_and_deleted_classes_stay_gone(tmp_path):
