@@ -103,6 +103,23 @@ class TaskGeneration:
         reply = self._text_generator.generate(text)
         return self._tasks.create(parse_text_task(reply))
 
+    def generate_from_objectives(self, objectives: tuple[Objective, ...], origin: LessonOrigin | StageOrigin) -> Task:
+        from scaffolding.text_generation import parse_text_task
+
+        if self._text_generator is None:
+            raise Rejected("there is no text generator")
+        if not objectives:
+            raise Rejected("there is no objective record to generate from")
+        lines = []
+        for item in objectives:
+            lines.append("维度：" + item.dimension)
+            lines.append("表述：" + item.statement)
+        lines.append("没有指定题型和数量。")
+        reply = self._text_generator.generate("\n".join(lines))
+        task = self._tasks.create(parse_text_task(reply))
+        self._origins[task.task_id] = origin
+        return task
+
     def _generate(
         self,
         objectives: tuple[Objective, ...],
