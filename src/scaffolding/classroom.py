@@ -6,6 +6,7 @@ from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
 from scaffolding.model_extractor import ModelObjectiveExtractor
 from scaffolding.model_generator import ModelQuestionGenerator, deepseek_complete
+from scaffolding.model_text import ModelTextGenerator
 from scaffolding.model_scaffold import ModelScaffoldAgent
 from scaffolding.objectives import ObjectiveCatalog
 from scaffolding.student_page import StudentPage
@@ -97,7 +98,12 @@ def production_classroom(*, post, api_key=None) -> Classroom:
         return deepseek_complete(messages, post=post, api_key=api_key)
 
     objectives = ObjectiveCatalog(knowledge, ModelObjectiveExtractor(complete))
-    generation = TaskGeneration(objectives, catalog, ModelQuestionGenerator(complete))
+    generation = TaskGeneration(
+        objectives,
+        catalog,
+        ModelQuestionGenerator(complete),
+        ModelTextGenerator(complete),
+    )
     return Classroom(
         catalog,
         ModelDecisionAgent(complete),

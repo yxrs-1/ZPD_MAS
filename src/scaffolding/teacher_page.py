@@ -88,6 +88,27 @@ class TeacherPage:
             return _missing()
         return _render(self, task_id)
 
+    def open_generation(self, message: str = "", text: str = "") -> str:
+        action = _with_prefix(self.prefix, "/generation")
+        body = "<h1>生成</h1>"
+        if message:
+            body += "<p>" + escape(message) + "</p>"
+        body += (
+            "<form method=\"post\" action=\"" + action + "\">"
+            + "<textarea name=\"text\">" + escape(text) + "</textarea>"
+            + "<button type=\"submit\">生成</button></form>"
+        )
+        return _document(body)
+
+    def apply_generation(self, text: str) -> str:
+        if text.strip() == "" or self.generation is None:
+            return self.open_generation("生成失败，没有创建任务", text)
+        try:
+            task = self.generation.generate_from_text(text)
+        except Exception:
+            return self.open_generation("生成失败，没有创建任务", text)
+        return _render(self, task.task_id)
+
     def apply(self, task_id: str, fields: dict, action: str) -> str:
         if task_id not in self.catalog._tasks:
             return _missing()
@@ -508,7 +529,12 @@ def _query_form(page, query, offer_extract: bool) -> str:
     )
     if offer_extract:
         body += "<button type=\"submit\" name=\"action\" value=\"提炼\">提炼</button>"
-    return body + "</form>"
+    return (
+        body
+        + "</form><a href=\""
+        + _with_prefix(page.prefix, "/generation")
+        + "\">生成</a>"
+    )
 
 
 def _retrieval_html(retrieval) -> str:
@@ -657,6 +683,12 @@ def response_for(page: TeacherPage, method: str, path: str, body: str) -> PageRe
         fields = parse_qs(body, keep_blank_values=True)
         action = fields.get("action", [""])[-1]
         return _html(page.apply_objectives(fields, action))
+    if parts == ["generation"] and method == "GET":
+        return _html(page.open_generation())
+    if parts == ["generation"] and method == "POST":
+        fields = parse_qs(body, keep_blank_values=True)
+        text = fields.get("text", [""])[-1]
+        return _html(page.apply_generation(text))
     return _html(_missing(), 404)
 
 

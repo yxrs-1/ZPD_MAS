@@ -63,10 +63,11 @@ def _usable_count(value: object) -> bool:
 
 
 class TaskGeneration:
-    def __init__(self, objectives: ObjectiveCatalog, tasks: TaskCatalog, generator) -> None:
+    def __init__(self, objectives: ObjectiveCatalog, tasks: TaskCatalog, generator, text_generator=None) -> None:
         self._objectives = objectives
         self._tasks = tasks
         self._generator = generator
+        self._text_generator = text_generator
         self._origins: dict[str, LessonOrigin | StageOrigin] = {}
 
     def generate_lesson(
@@ -93,6 +94,14 @@ class TaskGeneration:
 
     def origin(self, task_id: str) -> LessonOrigin | StageOrigin | None:
         return self._origins.get(task_id)
+
+    def generate_from_text(self, text: str) -> Task:
+        from scaffolding.text_generation import parse_text_task
+
+        if self._text_generator is None:
+            raise Rejected("there is no text generator")
+        reply = self._text_generator.generate(text)
+        return self._tasks.create(parse_text_task(reply))
 
     def _generate(
         self,
