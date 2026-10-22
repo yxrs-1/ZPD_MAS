@@ -1,9 +1,11 @@
+import email
 import secrets
 import time
 from dataclasses import replace
 from html import escape
-from urllib.parse import parse_qs, quote, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
+from scaffolding.class_page import class_response
 from scaffolding.generation import TaskGeneration
 from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
@@ -59,7 +61,15 @@ class Classroom:
         self.student = StudentPage(catalog, decision, scaffold_agent, prefix="/student")
 
 
-def response_for(room: Classroom, method: str, path: str, body: str, now: float, headers: str = ""):
+def response_for(
+    room: Classroom,
+    method: str,
+    path: str,
+    body: str,
+    now: float,
+    headers: str = "",
+    uploads=None,
+):
     raw_path = urlsplit(path).path
     parts = [part for part in raw_path.split("/") if part]
     if parts == []:
@@ -70,7 +80,7 @@ def response_for(room: Classroom, method: str, path: str, body: str, now: float,
     if not rest.startswith("/"):
         rest = "/" + rest
     if parts[0] == "teacher":
-        return _teacher_response(room, method, parts, rest, body, headers)
+        return _teacher_response(room, method, parts, rest, body, headers, uploads)
     return _student_response(room, method, parts, rest, body, now, headers)
 
 
@@ -161,12 +171,71 @@ def _student_login(room: Classroom, body: str, now: float):
     return replace(response, set_cookie=_set_cookie("student", token, "/student"))
 
 
-def _teacher_response(room: Classroom, method: str, parts: list, rest: str, body: str, headers: str):
+def files_from_body(content_type: str, body: bytes) -> dict[str, bytes]:
+    files = {}
+    for part in _multipart_parts(content_type, body):
+        name = _part_name(part)
+        if name == "" or part.get_filename() is None:
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        files[name] = payload
+    return files
+
+
+def _multipart_parts(content_type: str, body: bytes):
+    message = email.message_from_bytes(
+        b"Content-Type: " + content_type.encode("utf-8") + b"\r\n\r\n" + body
+    )
+    payload = message.get_payload()
+    if not isinstance(payload, list):
+        return ()
+    return payload
+
+
+def _part_name(part) -> str:
+    name = part.get_param("name", header="content-disposition")
+    if name is None:
+        return ""
+    if isinstance(name, tuple):
+        name = name[-1]
+    return str(name)
+
+
+def _fields_from_multipart(content_type: str, body: bytes) -> str:
+    pairs = []
+    for part in _multipart_parts(content_type, body):
+        name = _part_name(part)
+        if name == "" or part.get_filename() is not None:
+            continue
+        payload = part.get_payload(decode=True)
+        value = payload.decode("utf-8") if payload else ""
+        pairs.append((name, value))
+    return urlencode(pairs)
+
+
+def _teacher_response(
+    room: Classroom,
+    method: str,
+    parts: list,
+    rest: str,
+    body: str,
+    headers: str,
+    uploads=None,
+):
     if len(parts) >= 2 and parts[1] == "login" and method == "POST":
         return _teacher_login(room, body)
     token = _cookie_value(headers, "teacher")
     if token not in room.teacher_tokens:
         return _html(_login_page("/teacher/login"))
+    if len(parts) >= 2 and parts[1] == "classes":
+        fields = parse_qs(body, keep_blank_values=True)
+        html = class_response(room, method, rest, fields, uploads or {})
+        if html == "":
+            title = "学生不存在" if len(parts) >= 4 and parts[3] == "students" else "班级不存在"
+            return _html(_document("<h1>" + title + "</h1>"), 404)
+        return _html(html)
     if method == "POST" and len(parts) == 1:
         fields = parse_qs(body, keep_blank_values=True)
         action = fields.get("action", [""])[-1]
@@ -250,9 +319,18 @@ def serve(room: Classroom, port: int) -> None:
 
         def _respond(self) -> None:
             length = int(self.headers.get("Content-Length", "0") or "0")
-            raw = self.rfile.read(length).decode("utf-8")
+            raw_bytes = self.rfile.read(length)
+            content_type = self.headers.get("Content-Type", "") or ""
+            uploads = None
+            if "multipart/form-data" in content_type.lower():
+                uploads = files_from_body(content_type, raw_bytes)
+                raw = _fields_from_multipart(content_type, raw_bytes)
+            else:
+                raw = raw_bytes.decode("utf-8")
             headers = self.headers.get("Cookie", "")
-            response = response_for(room, self.command, self.path, raw, time.monotonic(), headers)
+            response = response_for(
+                room, self.command, self.path, raw, time.monotonic(), headers, uploads
+            )
             self.send_response(response.status)
             self.send_header("Content-Type", response.content_type)
             filename = getattr(response, "filename", "")

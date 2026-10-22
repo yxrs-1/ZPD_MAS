@@ -1,5 +1,6 @@
 import io
 import zipfile
+from html import escape
 
 import pytest
 
@@ -13,7 +14,7 @@ def _xlsx(rows: tuple[tuple[str, ...], ...]) -> bytes:
         for column, value in enumerate(values):
             ref = chr(ord("A") + column) + str(index)
             cells.append(
-                '<c r="' + ref + '" t="inlineStr"><is><t>' + value + "</t></is></c>"
+                '<c r="' + ref + '" t="inlineStr"><is><t>' + escape(value) + "</t></is></c>"
             )
         sheet_rows.append('<row r="' + str(index) + '">' + "".join(cells) + "</row>")
     sheet = (
