@@ -351,12 +351,123 @@ def files_from_body(content_type: str, body: bytes) -> dict[str, bytes]:
 
 def filenames_from_body(content_type: str, body: bytes) -> dict[str, str]:
     names = {}
-    for part in _multipart_parts(content_type, body):
-        name = _part_name(part)
-        filename = part.get_filename()
+    for headers in _raw_part_headers(content_type, body):
+        name, filename = _disposition_name_and_filename(headers)
         if name and filename:
-            names[name] = str(filename)
+            names[name] = filename
     return names
+
+
+def _raw_part_headers(content_type: str, body: bytes):
+    boundary = _multipart_boundary(content_type)
+    if boundary == b"":
+        return
+    for chunk in body.split(b"--" + boundary):
+        if chunk.startswith(b"--"):
+            continue
+        if chunk.startswith(b"\r\n"):
+            chunk = chunk[2:]
+        elif chunk.startswith(b"\n"):
+            chunk = chunk[1:]
+        if chunk == b"":
+            continue
+        separator = b"\r\n\r\n"
+        index = chunk.find(separator)
+        if index < 0:
+            index = chunk.find(b"\n\n")
+        if index < 0:
+            continue
+        yield chunk[:index]
+
+
+def _multipart_boundary(content_type: str) -> bytes:
+    lower = content_type.lower()
+    marker = "boundary="
+    start = lower.find(marker)
+    if start < 0:
+        return b""
+    value = content_type[start + len(marker):].strip()
+    if ";" in value:
+        value = value.split(";", 1)[0].strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        value = value[1:-1]
+    return value.encode("utf-8")
+
+
+def _disposition_name_and_filename(headers: bytes) -> tuple[str, str]:
+    params = _header_params(_header_value(headers, b"content-disposition"))
+    name = params.get(b"name", b"").decode("utf-8")
+    starred = params.get(b"filename*")
+    if starred is not None:
+        return name, _decode_filename_star(starred)
+    quoted = params.get(b"filename")
+    if quoted is None:
+        return name, ""
+    return name, quoted.decode("utf-8")
+
+
+def _header_value(headers: bytes, name: bytes) -> bytes:
+    prefix = name.lower() + b":"
+    current = None
+    for raw in headers.replace(b"\r\n", b"\n").split(b"\n"):
+        if raw.startswith((b" ", b"\t")) and current is not None:
+            current += b" " + raw.strip()
+            continue
+        if current is not None and current.lower().startswith(prefix):
+            return current.split(b":", 1)[1].strip()
+        current = raw
+    if current is not None and current.lower().startswith(prefix):
+        return current.split(b":", 1)[1].strip()
+    return b""
+
+
+def _header_params(header: bytes) -> dict[bytes, bytes]:
+    params = {}
+    rest = header
+    while True:
+        semicolon = rest.find(b";")
+        if semicolon < 0:
+            break
+        rest = rest[semicolon + 1:].lstrip()
+        equals = rest.find(b"=")
+        if equals < 0:
+            break
+        key = rest[:equals].strip().lower()
+        rest = rest[equals + 1:].lstrip()
+        if rest.startswith(b'"'):
+            value, rest = _quoted_bytes(rest)
+        else:
+            end = rest.find(b";")
+            if end < 0:
+                value, rest = rest, b""
+            else:
+                value, rest = rest[:end].rstrip(), rest[end:]
+        params[key] = value
+    return params
+
+
+def _quoted_bytes(text: bytes) -> tuple[bytes, bytes]:
+    out = bytearray()
+    index = 1
+    while index < len(text):
+        char = text[index]
+        if char == 92 and index + 1 < len(text):
+            out.append(text[index + 1])
+            index += 2
+            continue
+        if char == 34:
+            return bytes(out), text[index + 1:]
+        out.append(char)
+        index += 1
+    return bytes(out), b""
+
+
+def _decode_filename_star(value: bytes) -> str:
+    text = value.decode("ascii")
+    marker = "utf-8''"
+    if text.lower().startswith(marker):
+        return unquote(text[len(marker):], encoding="utf-8")
+    return unquote(text, encoding="utf-8")
 
 
 def _multipart_parts(content_type: str, body: bytes):
