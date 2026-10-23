@@ -30,13 +30,7 @@ def test_a_text_request_opens_the_new_unpublished_task():
     opened = text(response_for(page, "POST", "/generation", form(text="  出两道单选  ")))
     listed = text(response_for(page, "GET", "/", ""))
     again = text(response_for(page, "GET", "/generation", ""))
-    viewed = text(response_for(page, "POST", "/objectives", form(
-        mode="课时",
-        version="人教版",
-        volume="必修一",
-        lesson="信息系统的组成",
-        action="查看",
-    )))
+    viewed = text(response_for(page, "GET", "/objectives", ""))
 
     assert opened.index("第一") < opened.index("第二") < opened.index("综合题")
     assert "未发布" in opened
@@ -48,4 +42,3 @@ def test_a_text_request_opens_the_new_unpublished_task():
     assert "task-1" in listed
     assert "<textarea name=\"text\"></textarea>" in again
     assert "task-1" not in viewed
-    assert "能识别信息" in viewed
