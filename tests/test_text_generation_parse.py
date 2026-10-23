@@ -21,6 +21,34 @@ def test_parse_orders_specified_and_unspecified_questions():
     assert [item.prompt for item in questions] == ["第一", "第二", "综合题"]
 
 
+def test_parse_accepts_an_unspecified_reading_string():
+    questions = parse_text_task(dumped(
+        reading="  未指定  ",
+        questions={
+            "单选": [],
+            "多选": [],
+            "判断": [],
+            "综合": [opened("综合题")],
+        },
+    ))
+
+    assert [item.prompt for item in questions] == ["综合题"]
+
+
+def test_parse_rejects_other_reading_strings_and_an_empty_unspecified_task():
+    samples = [
+        dumped(reading="其他"),
+        dumped(
+            reading="未指定",
+            questions={"单选": [], "多选": [], "判断": [], "综合": []},
+        ),
+    ]
+
+    for sample in samples:
+        with pytest.raises(Rejected):
+            parse_text_task(sample)
+
+
 def test_parse_rejects_an_unacceptable_reply():
     readings = [
         {"多选": "未指定", "判断": 0, "综合": "未指定"},
