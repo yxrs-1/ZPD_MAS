@@ -11,9 +11,6 @@ _DIMENSIONS = frozenset({
     "数字化学习与创新",
     "信息社会责任",
 })
-_CHOICE_KEYS = {"题目", "选项", "参考答案", "解析"}
-_JUDGED_KEYS = {"题目", "参考答案", "解析"}
-_OPEN_KEYS = {"题目", "作答要求", "参考答案", "解析"}
 
 
 def parse_text_task(reply: str) -> tuple:
@@ -57,79 +54,96 @@ def _objectives(objectives):
     if not isinstance(objectives, list) or objectives == []:
         raise Rejected("text task reply is not acceptable")
     for item in objectives:
-        if not isinstance(item, dict) or set(item) != {"维度", "表述"}:
+        if not isinstance(item, dict):
             raise Rejected("text task reply is not acceptable")
-        if type(item["维度"]) is not str or item["维度"] not in _DIMENSIONS:
+        dimension = item.get("维度")
+        statement = item.get("表述")
+        if type(dimension) is not str or dimension not in _DIMENSIONS:
             raise Rejected("text task reply is not acceptable")
-        if type(item["表述"]) is not str or item["表述"].strip() == "":
+        if type(statement) is not str or statement.strip() == "":
             raise Rejected("text task reply is not acceptable")
 
 
 def _questions(questions):
-    if not isinstance(questions, dict) or set(questions) != set(_KINDS):
+    if not isinstance(questions, dict):
         raise Rejected("text task reply is not acceptable")
     return {
-        "单选": _choices(questions["单选"], SelectionMode.SINGLE),
-        "多选": _choices(questions["多选"], SelectionMode.MULTIPLE),
-        "判断": _judged(questions["判断"]),
-        "综合": _opened(questions["综合"]),
+        "单选": _choices(questions.get("单选", []), SelectionMode.SINGLE),
+        "多选": _choices(questions.get("多选", []), SelectionMode.MULTIPLE),
+        "判断": _judged(questions.get("判断", [])),
+        "综合": _opened(questions.get("综合", [])),
     }
 
 
-def _objects(value, keys):
-    if not isinstance(value, list):
-        raise Rejected("text task reply is not acceptable")
-    items = []
-    for item in value:
-        if not isinstance(item, dict) or set(item) != keys:
-            raise Rejected("text task reply is not acceptable")
-        items.append(item)
-    return items
+def _text(item, key):
+    value = item.get(key, "")
+    if type(value) is not str:
+        return None
+    return value
 
 
-def _strings(value):
+def _string_list(value):
+    if type(value) is str:
+        value = [value]
     if not isinstance(value, list) or any(type(item) is not str for item in value):
         return None
     return tuple(value)
 
 
 def _choices(value, selection):
+    if not isinstance(value, list):
+        return ()
     questions = []
-    for item in _objects(value, _CHOICE_KEYS):
-        options = _strings(item["选项"])
-        answers = _strings(item["参考答案"])
-        if options is None or answers is None or type(item["题目"]) is not str or type(item["解析"]) is not str:
-            raise Rejected("text task reply is not acceptable")
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        prompt = _text(item, "题目")
+        explanation = _text(item, "解析")
+        options = _string_list(item.get("选项"))
+        answers = _string_list(item.get("参考答案"))
+        if prompt is None or explanation is None or options is None or answers is None:
+            continue
         try:
-            questions.append(ChoiceQuestion(
-                item["题目"], selection, options, answers, item["解析"]
-            ))
-        except ValueError as error:
-            raise Rejected("text task reply is not acceptable") from error
+            questions.append(ChoiceQuestion(prompt, selection, options, answers, explanation))
+        except ValueError:
+            continue
     return tuple(questions)
 
 
 def _judged(value):
+    if not isinstance(value, list):
+        return ()
     questions = []
-    for item in _objects(value, _JUDGED_KEYS):
-        if any(type(item[key]) is not str for key in _JUDGED_KEYS):
-            raise Rejected("text task reply is not acceptable")
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        prompt = _text(item, "题目")
+        answer = item.get("参考答案")
+        explanation = _text(item, "解析")
+        if type(answer) is not str or prompt is None or explanation is None:
+            continue
         try:
-            questions.append(TrueFalseQuestion(item["题目"], item["参考答案"], item["解析"]))
-        except ValueError as error:
-            raise Rejected("text task reply is not acceptable") from error
+            questions.append(TrueFalseQuestion(prompt, answer, explanation))
+        except ValueError:
+            continue
     return tuple(questions)
 
 
 def _opened(value):
+    if not isinstance(value, list):
+        return ()
     questions = []
-    for item in _objects(value, _OPEN_KEYS):
-        if any(type(item[key]) is not str for key in _OPEN_KEYS):
-            raise Rejected("text task reply is not acceptable")
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        prompt = _text(item, "题目")
+        requirements = _text(item, "作答要求")
+        answer = item.get("参考答案", "")
+        explanation = item.get("解析", "")
+        if prompt is None or requirements is None or type(answer) is not str or type(explanation) is not str:
+            continue
         try:
-            questions.append(OpenQuestion(
-                item["题目"], item["作答要求"], item["参考答案"], item["解析"]
-            ))
-        except ValueError as error:
-            raise Rejected("text task reply is not acceptable") from error
+            questions.append(OpenQuestion(prompt, requirements, answer, explanation))
+        except ValueError:
+            continue
     return tuple(questions)
