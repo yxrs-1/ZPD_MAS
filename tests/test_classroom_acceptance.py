@@ -1,18 +1,18 @@
 from pathlib import Path
 
 from scaffolding.classroom import production_classroom, response_for, serve
-from tests.classroom_helpers import room, text
+from tests.classroom_helpers import room, student_cookie, teacher_cookie, text
 
 
 def test_a_new_classroom_does_not_see_another_catalog_draft_or_session():
     first = room()
-    response_for(first, "POST", "/teacher/tasks", "", 0)
+    response_for(first, "POST", "/teacher/tasks", "", 0, teacher_cookie(first))
     first.teacher.drafts["task-1"] = ()
     first.student.shown_at["task-1"] = 1
     second = room()
 
-    assert "task-1" not in text(response_for(second, "GET", "/teacher", "", 0))
-    assert "task-1" not in text(response_for(second, "GET", "/student", "", 0))
+    assert "task-1" not in text(response_for(second, "GET", "/teacher", "", 0, teacher_cookie(second)))
+    assert "task-1" not in text(response_for(second, "GET", "/student", "", 0, student_cookie(second)))
     assert second.teacher.drafts == {}
     assert second.student.sessions == {}
     assert second.student.shown_at == {}

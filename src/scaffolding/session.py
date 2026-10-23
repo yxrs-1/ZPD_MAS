@@ -63,6 +63,25 @@ class Session:
         self._presets = tuple(decision.suggest(self.record))
         self._scaffold: Scaffold | None = None
 
+    @classmethod
+    def restore(
+        cls,
+        catalog: TaskCatalog,
+        work: StudentWork,
+        decision: DecisionAgent,
+        scaffold_agent: ScaffoldAgent,
+        presets,
+        scaffold: Scaffold | None,
+    ):
+        session = cls.__new__(cls)
+        session._catalog = catalog
+        session.work = work
+        session._decision = decision
+        session._scaffold_agent = scaffold_agent
+        session._presets = tuple(presets)
+        session._scaffold = scaffold
+        return session
+
     @property
     def record(self) -> TaskRecord:
         return TaskRecord(self.work.questions, self.work.answers, self.work.behavior)

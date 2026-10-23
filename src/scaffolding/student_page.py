@@ -17,16 +17,18 @@ class PageResponse:
     content_type: str
     body: bytes
     filename: str = ""
+    set_cookie: str = ""
 
 
 class StudentPage:
-    def __init__(self, catalog, decision, scaffold_agent, prefix: str = "") -> None:
+    def __init__(self, catalog, decision, scaffold_agent, prefix: str = "", show_logout: bool = False) -> None:
         self.catalog = catalog
         self.decision = decision
         self.scaffold_agent = scaffold_agent
         self.sessions = {}
         self.shown_at = {}
         self.prefix = prefix
+        self.show_logout = show_logout
 
     def todo(self) -> str:
         items = []
@@ -36,7 +38,14 @@ class StudentPage:
                 "<li><a href=\"" + href + "\">" + escape(listed.task_id)
                 + "</a> " + escape(listed.status) + "</li>"
             )
-        return _document("<h1>待办</h1><ul>" + "".join(items) + "</ul>")
+        body = "<h1>待办</h1><ul>" + "".join(items) + "</ul>"
+        if self.show_logout:
+            action = self.prefix if self.prefix else "/"
+            body += (
+                "<form method=\"post\" action=\"" + action + "\">"
+                + "<button type=\"submit\" name=\"action\" value=\"退出\">退出</button></form>"
+            )
+        return _document(body)
 
     def open_task(self, task_id: str, now: float) -> str:
         if not _published(self, task_id):
