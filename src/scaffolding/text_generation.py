@@ -37,7 +37,7 @@ def parse_text_task(reply: str) -> tuple:
 
 
 def _counts(reading):
-    if type(reading) is str and reading.strip() == "未指定":
+    if type(reading) is str and reading.strip() != "":
         return {kind: None for kind in _KINDS}
     if not isinstance(reading, dict) or set(reading) != set(_KINDS):
         raise Rejected("text task reply is not acceptable")

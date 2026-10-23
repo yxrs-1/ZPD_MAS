@@ -35,9 +35,23 @@ def test_parse_accepts_an_unspecified_reading_string():
     assert [item.prompt for item in questions] == ["综合题"]
 
 
-def test_parse_rejects_other_reading_strings_and_an_empty_unspecified_task():
+def test_parse_accepts_a_reading_word_when_no_count_is_given():
+    questions = parse_text_task(dumped(
+        reading="综合",
+        questions={
+            "单选": [choice("单选")],
+            "多选": [],
+            "判断": [],
+            "综合": [opened("综合题")],
+        },
+    ))
+
+    assert [item.prompt for item in questions] == ["单选", "综合题"]
+
+
+def test_parse_rejects_a_blank_reading_and_an_empty_unspecified_task():
     samples = [
-        dumped(reading="其他"),
+        dumped(reading="   "),
         dumped(
             reading="未指定",
             questions={"单选": [], "多选": [], "判断": [], "综合": []},
