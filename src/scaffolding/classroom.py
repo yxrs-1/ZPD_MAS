@@ -1,5 +1,6 @@
 import email
 import os
+import sys
 import secrets
 import threading
 import time
@@ -15,7 +16,7 @@ from scaffolding.generation import TaskGeneration
 from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
 from scaffolding.model_extractor import ModelObjectiveExtractor
-from scaffolding.model_generator import ModelQuestionGenerator, deepseek_complete
+from scaffolding.model_generator import ModelQuestionGenerator, deepseek_complete, post_json
 from scaffolding.model_text import ModelTextGenerator
 from scaffolding.model_scaffold import ModelScaffoldAgent
 from scaffolding.objectives import ObjectiveCatalog
@@ -675,3 +676,37 @@ def serve(room: Classroom, port: int) -> None:
             return
 
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+
+
+def _port(argv: list[str]) -> int | None:
+    if len(argv) == 0:
+        return 8000
+    if len(argv) != 1:
+        return None
+    text = argv[0].strip()
+    if len(text) == 0 or not text.isascii() or not text.isdigit():
+        return None
+    value = int(text)
+    if value < 1 or value > 65535:
+        return None
+    return value
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:]) if argv is None else argv
+    key = os.environ.get("DEEPSEEK_API_KEY")
+    if key is None or key.strip() == "":
+        print("没有配置 DEEPSEEK_API_KEY", file=sys.stderr)
+        return 1
+    port = _port(args)
+    if port is None:
+        print("端口不正确", file=sys.stderr)
+        return 1
+    print("http://127.0.0.1:" + str(port), flush=True)
+    room = production_classroom(post=post_json)
+    serve(room, port)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
