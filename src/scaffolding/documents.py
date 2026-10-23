@@ -176,6 +176,28 @@ def format_objectives(items) -> str:
     return "\n\n".join("维度：" + item.dimension + "\n表述：" + item.statement for item in items)
 
 
+def parse_objective_text(text: str) -> tuple[DraftedObjective, ...]:
+    blocks = [block for block in text.replace("\r\n", "\n").split("\n\n") if block.strip()]
+    if blocks == []:
+        raise DraftError("目标格式不正确")
+    parsed = []
+    for block in blocks:
+        lines = [line for line in block.split("\n") if line.strip()]
+        if len(lines) != 2 or not lines[0].startswith("维度：") or not lines[1].startswith("表述："):
+            raise DraftError("目标格式不正确")
+        dimension = lines[0][len("维度："):].strip()
+        statement = lines[1][len("表述："):].strip()
+        if dimension not in _DIMENSIONS or statement == "":
+            raise DraftError("目标格式不正确")
+        parsed.append(DraftedObjective(dimension, statement))
+    return tuple(parsed)
+
+
+def confirm_prompt(demand: str, objectives: tuple[DraftedObjective, ...]) -> str:
+    blocks = ["维度：" + item.dimension + "\n表述：" + item.statement for item in objectives]
+    return "教师需求：\n" + demand.strip() + "\n\n目标：\n" + "\n\n".join(blocks)
+
+
 def _call(complete, messages):
     try:
         reply = complete(messages)
