@@ -1,5 +1,6 @@
 import io
 import zipfile
+from dataclasses import dataclass
 from xml.etree import ElementTree
 
 from pypdf import PdfReader
@@ -87,3 +88,34 @@ def _chunks(blocks: tuple[tuple[str, bool], ...]) -> tuple[str, ...]:
     if current:
         chunks.append("\n".join(current))
     return tuple(chunk for chunk in chunks if chunk.strip())
+
+
+_PUNCTUATION = "，。！？、；：,.!?;:（）()【】[]《》<>\"'“”‘’"
+
+
+@dataclass(frozen=True)
+class StoredDocument:
+    doc_id: str
+    name: str
+    chunks: tuple[str, ...]
+
+
+def rank_passages(documents: tuple[StoredDocument, ...], query: str) -> tuple[tuple[str, str], ...]:
+    terms = tuple(dict.fromkeys(_terms(query)))
+    if terms == ():
+        return ()
+    ranked = []
+    for doc_index, document in enumerate(documents):
+        for chunk_index, chunk in enumerate(document.chunks):
+            hits = sum(1 for term in terms if term in chunk)
+            if hits:
+                ranked.append((-hits, doc_index, chunk_index, document.name, chunk))
+    ranked.sort()
+    return tuple((name, chunk) for _, _, _, name, chunk in ranked[:5])
+
+
+def _terms(query: str) -> tuple[str, ...]:
+    characters = []
+    for character in query.strip():
+        characters.append(" " if character.isspace() or character in _PUNCTUATION else character)
+    return tuple(term for term in "".join(characters).split(" ") if term)
