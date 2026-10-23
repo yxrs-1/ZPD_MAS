@@ -21,6 +21,78 @@ def test_parse_orders_specified_and_unspecified_questions():
     assert [item.prompt for item in questions] == ["第一", "第二", "综合题"]
 
 
+def test_parse_accepts_an_unspecified_reading_string():
+    questions = parse_text_task(dumped(
+        reading="  未指定  ",
+        questions={
+            "单选": [],
+            "多选": [],
+            "判断": [],
+            "综合": [opened("综合题")],
+        },
+    ))
+
+    assert [item.prompt for item in questions] == ["综合题"]
+
+
+def test_parse_accepts_a_reading_word_when_no_count_is_given():
+    questions = parse_text_task(dumped(
+        reading="综合",
+        questions={
+            "单选": [choice("单选")],
+            "多选": [],
+            "判断": [],
+            "综合": [opened("综合题")],
+        },
+    ))
+
+    assert [item.prompt for item in questions] == ["单选", "综合题"]
+
+
+def test_parse_keeps_valid_questions_when_an_objective_has_an_extra_field():
+    questions = parse_text_task(json.dumps({
+        "读法": "未指定",
+        "目标": [{"维度": "信息意识", "表述": "能识别信息", "来源": "教材"}],
+        "题目": {
+            "单选": [{"题目": "单选题", "选项": ["甲"], "参考答案": ["甲"], "解析": "解析"}],
+            "多选": [],
+            "判断": [],
+            "综合": [{"题目": "综合题", "作答要求": "写出过程", "参考答案": "", "解析": ""}],
+        },
+    }, ensure_ascii=False))
+
+    assert [item.prompt for item in questions] == ["综合题"]
+
+
+def test_parse_keeps_a_choice_with_a_blank_explanation():
+    questions = parse_text_task(dumped(
+        reading="未指定",
+        questions={
+            "单选": [{"题目": "单选题", "选项": ["甲", "乙"], "参考答案": "甲", "解析": ""}],
+            "多选": [],
+            "判断": [],
+            "综合": [],
+        },
+    ))
+
+    assert questions[0].prompt == "单选题"
+    assert questions[0].explanation == ""
+
+
+def test_parse_rejects_a_blank_reading_and_an_empty_unspecified_task():
+    samples = [
+        dumped(reading="   "),
+        dumped(
+            reading="未指定",
+            questions={"单选": [], "多选": [], "判断": [], "综合": []},
+        ),
+    ]
+
+    for sample in samples:
+        with pytest.raises(Rejected):
+            parse_text_task(sample)
+
+
 def test_parse_rejects_an_unacceptable_reply():
     readings = [
         {"多选": "未指定", "判断": 0, "综合": "未指定"},
@@ -34,13 +106,11 @@ def test_parse_rejects_an_unacceptable_reply():
         [],
         [{"维度": "超纲", "表述": "能识别信息"}],
         [{"维度": "信息意识", "表述": "   "}],
-        [{"维度": "信息意识", "表述": "能识别信息", "来源": "教材"}],
     ]
     questions = [
         {"单选": [choice("第一")], "多选": [], "判断": [judged()], "综合": []},
         {"单选": [], "多选": [], "判断": [], "综合": []},
         {"单选": [choice("第一", answers=("甲", "乙"))], "多选": [], "判断": [], "综合": []},
-        {"单选": [choice("第一")], "多选": [], "判断": [], "综合": [opened()], "填空": []},
     ]
     samples = [json.dumps({**body(), "读法": item}) for item in readings]
     one_option = {"题目": "单选题", "选项": ["甲"], "参考答案": ["甲"], "解析": "解析"}

@@ -68,8 +68,8 @@ class ChoiceQuestion:
     def __post_init__(self) -> None:
         distinct = len(set(self.choices)) == len(self.choices)
         filled = all(_filled(choice) for choice in self.choices)
-        if not _filled(self.prompt) or not _filled(self.explanation):
-            raise ValueError("choice question needs a prompt and explanation")
+        if not _filled(self.prompt):
+            raise ValueError("choice question needs a prompt")
         if len(self.choices) < 2 or not distinct or not filled:
             raise ValueError("choice question needs two distinct choices")
         if self.selection == SelectionMode.SINGLE and len(self.answer) != 1:
@@ -87,8 +87,8 @@ class TrueFalseQuestion:
     explanation: str
 
     def __post_init__(self) -> None:
-        if not _filled(self.prompt) or not _filled(self.explanation) or self.answer not in {"正确", "错误"}:
-            raise ValueError("true/false question needs a prompt, 正确 or 错误, and explanation")
+        if not _filled(self.prompt) or self.answer not in {"正确", "错误"}:
+            raise ValueError("true/false question needs a prompt and 正确 or 错误")
 
 
 @dataclass(frozen=True)
