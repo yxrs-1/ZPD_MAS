@@ -1,5 +1,7 @@
 import json
 import os
+import urllib.error
+import urllib.request
 
 from scaffolding.generation import QuestionCounts, Rejected
 from scaffolding.knowledge import LessonSource
@@ -184,3 +186,28 @@ def _content(status: object, response: object) -> str | None:
     if type(content) is not str:
         return None
     return content
+
+
+def post_json(url, headers, payload, *, opener=urllib.request.urlopen):
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=dict(headers),
+        method="POST",
+    )
+    try:
+        response = opener(request, timeout=60)
+    except urllib.error.HTTPError as error:
+        response = error
+    try:
+        raw = response.read()
+    finally:
+        close = getattr(response, "close", None)
+        if close is not None:
+            close()
+    status = response.status if hasattr(response, "status") else response.code
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        parsed = None
+    return status, parsed
