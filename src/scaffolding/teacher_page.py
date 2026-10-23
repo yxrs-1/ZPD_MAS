@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+from scaffolding.documents import DocumentLibrary
 from scaffolding.generation import LessonOrigin, StageOrigin
 from scaffolding.knowledge import KnowledgeBase, LessonRetrieval, LessonSource
 from scaffolding.objectives import ObjectiveCatalog, Rejected as ObjectiveRejected
@@ -37,7 +38,7 @@ class _EmptyExtractor:
 
 
 class TeacherPage:
-    def __init__(self, catalog, prefix: str = "", roster=None, *, knowledge=None, objectives=None, generation=None, classwork=None) -> None:
+    def __init__(self, catalog, prefix: str = "", roster=None, *, knowledge=None, objectives=None, generation=None, classwork=None, library=None) -> None:
         self.catalog = catalog
         self.drafts = {}
         self.prefix = prefix
@@ -48,6 +49,7 @@ class TeacherPage:
             objectives if objectives is not None else ObjectiveCatalog(self.knowledge, _EmptyExtractor())
         )
         self.generation = generation
+        self.library = library if library is not None else DocumentLibrary()
 
     def list_tasks(self, message: str = "") -> str:
         return _render_list(self, message)

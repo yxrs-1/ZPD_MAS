@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 import scaffolding.store as store
 from scaffolding.class_page import class_asset, class_response, missing_task_page
 from scaffolding.classwork import Classwork, StudentView
+from scaffolding.documents import DocumentLibrary
 from scaffolding.generation import TaskGeneration
 from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
@@ -59,6 +60,7 @@ class Classroom:
         self.teacher_tokens = set()
         self.student_tokens = {}
         self.student_pages = {}
+        self.documents = DocumentLibrary()
         self.teacher = TeacherPage(
             catalog,
             prefix="/teacher",
@@ -67,6 +69,7 @@ class Classroom:
             objectives=self.objectives,
             generation=generation,
             classwork=self.classwork,
+            library=self.documents,
         )
         self.student = StudentPage(catalog, decision, scaffold_agent, prefix="/student")
         self.path = None if path is None else os.fspath(path)

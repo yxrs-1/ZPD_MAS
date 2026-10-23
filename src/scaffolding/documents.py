@@ -101,6 +101,36 @@ class StoredDocument:
     chunks: tuple[str, ...]
 
 
+class DocumentLibrary:
+    def __init__(self) -> None:
+        self._docs: dict[str, StoredDocument] = {}
+        self._order: list[str] = []
+        self._next = 1
+
+    def documents(self) -> tuple[StoredDocument, ...]:
+        return tuple(self._docs[doc_id] for doc_id in self._order)
+
+    def add(self, name: str, content: bytes) -> StoredDocument:
+        chunks = read_document(name, content)
+        doc_id = "doc-" + str(self._next)
+        self._next += 1
+        stored = StoredDocument(doc_id, name, chunks)
+        self._docs[doc_id] = stored
+        self._order.append(doc_id)
+        return stored
+
+    def delete(self, doc_id: str) -> None:
+        if doc_id not in self._docs:
+            raise DocumentError("文档不存在")
+        del self._docs[doc_id]
+        self._order.remove(doc_id)
+
+    def load(self, documents: tuple[StoredDocument, ...], next_id: int) -> None:
+        self._docs = {item.doc_id: item for item in documents}
+        self._order = [item.doc_id for item in documents]
+        self._next = next_id
+
+
 def rank_passages(documents: tuple[StoredDocument, ...], query: str) -> tuple[tuple[str, str], ...]:
     terms = tuple(dict.fromkeys(_terms(query)))
     if terms == ():
