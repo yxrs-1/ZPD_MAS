@@ -31,7 +31,8 @@ def test_the_classroom_prefixes_objectives_and_hides_them_from_the_student():
 
     assert "目标" not in home
     assert 'href="/teacher/objectives"' in listed
-    assert "查看" in opened
+    assert "生成目标" in opened
+    assert 'name="file"' in opened
     assert student.status == 404
     assert "任务不存在" in text(student)
     assert "课时原文" not in text(student)

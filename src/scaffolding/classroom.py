@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 import scaffolding.store as store
 from scaffolding.class_page import class_asset, class_response, missing_task_page
 from scaffolding.classwork import Classwork, StudentView
+from scaffolding.documents import DocumentLibrary
 from scaffolding.generation import TaskGeneration
 from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
@@ -44,6 +45,7 @@ class Classroom:
         generation=None,
         *,
         path=None,
+        complete=None,
     ) -> None:
         self._lock = threading.RLock()
         self.catalog = catalog
@@ -59,6 +61,7 @@ class Classroom:
         self.teacher_tokens = set()
         self.student_tokens = {}
         self.student_pages = {}
+        self.documents = DocumentLibrary()
         self.teacher = TeacherPage(
             catalog,
             prefix="/teacher",
@@ -67,6 +70,8 @@ class Classroom:
             objectives=self.objectives,
             generation=generation,
             classwork=self.classwork,
+            library=self.documents,
+            complete=complete,
         )
         self.student = StudentPage(catalog, decision, scaffold_agent, prefix="/student")
         self.path = None if path is None else os.fspath(path)
@@ -86,11 +91,12 @@ def response_for(
     now: float,
     headers: str = "",
     uploads=None,
+    filenames=None,
 ):
     with room._lock:
         tracking = room.path is not None
         before = store.classroom_state(room) if tracking else None
-        response = _dispatch_response(room, method, path, body, now, headers, uploads)
+        response = _dispatch_response(room, method, path, body, now, headers, uploads, filenames)
         if before is not None and store.classroom_state(room) != before:
             return _commit(room, response, path, headers, now)
         return response
@@ -104,6 +110,7 @@ def _dispatch_response(
     now: float,
     headers: str = "",
     uploads=None,
+    filenames=None,
 ):
     raw_path = urlsplit(path).path
     parts = [part for part in raw_path.split("/") if part]
@@ -115,7 +122,7 @@ def _dispatch_response(
     if not rest.startswith("/"):
         rest = "/" + rest
     if parts[0] == "teacher":
-        return _teacher_response(room, method, parts, rest, body, headers, uploads)
+        return _teacher_response(room, method, parts, rest, body, headers, uploads, filenames)
     return _student_response(room, method, parts, rest, body, now, headers)
 
 
@@ -342,6 +349,127 @@ def files_from_body(content_type: str, body: bytes) -> dict[str, bytes]:
     return files
 
 
+def filenames_from_body(content_type: str, body: bytes) -> dict[str, str]:
+    names = {}
+    for headers in _raw_part_headers(content_type, body):
+        name, filename = _disposition_name_and_filename(headers)
+        if name and filename:
+            names[name] = filename
+    return names
+
+
+def _raw_part_headers(content_type: str, body: bytes):
+    boundary = _multipart_boundary(content_type)
+    if boundary == b"":
+        return
+    for chunk in body.split(b"--" + boundary):
+        if chunk.startswith(b"--"):
+            continue
+        if chunk.startswith(b"\r\n"):
+            chunk = chunk[2:]
+        elif chunk.startswith(b"\n"):
+            chunk = chunk[1:]
+        if chunk == b"":
+            continue
+        separator = b"\r\n\r\n"
+        index = chunk.find(separator)
+        if index < 0:
+            index = chunk.find(b"\n\n")
+        if index < 0:
+            continue
+        yield chunk[:index]
+
+
+def _multipart_boundary(content_type: str) -> bytes:
+    lower = content_type.lower()
+    marker = "boundary="
+    start = lower.find(marker)
+    if start < 0:
+        return b""
+    value = content_type[start + len(marker):].strip()
+    if ";" in value:
+        value = value.split(";", 1)[0].strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        value = value[1:-1]
+    return value.encode("utf-8")
+
+
+def _disposition_name_and_filename(headers: bytes) -> tuple[str, str]:
+    params = _header_params(_header_value(headers, b"content-disposition"))
+    name = params.get(b"name", b"").decode("utf-8")
+    starred = params.get(b"filename*")
+    if starred is not None:
+        return name, _decode_filename_star(starred)
+    quoted = params.get(b"filename")
+    if quoted is None:
+        return name, ""
+    return name, quoted.decode("utf-8")
+
+
+def _header_value(headers: bytes, name: bytes) -> bytes:
+    prefix = name.lower() + b":"
+    current = None
+    for raw in headers.replace(b"\r\n", b"\n").split(b"\n"):
+        if raw.startswith((b" ", b"\t")) and current is not None:
+            current += b" " + raw.strip()
+            continue
+        if current is not None and current.lower().startswith(prefix):
+            return current.split(b":", 1)[1].strip()
+        current = raw
+    if current is not None and current.lower().startswith(prefix):
+        return current.split(b":", 1)[1].strip()
+    return b""
+
+
+def _header_params(header: bytes) -> dict[bytes, bytes]:
+    params = {}
+    rest = header
+    while True:
+        semicolon = rest.find(b";")
+        if semicolon < 0:
+            break
+        rest = rest[semicolon + 1:].lstrip()
+        equals = rest.find(b"=")
+        if equals < 0:
+            break
+        key = rest[:equals].strip().lower()
+        rest = rest[equals + 1:].lstrip()
+        if rest.startswith(b'"'):
+            value, rest = _quoted_bytes(rest)
+        else:
+            end = rest.find(b";")
+            if end < 0:
+                value, rest = rest, b""
+            else:
+                value, rest = rest[:end].rstrip(), rest[end:]
+        params[key] = value
+    return params
+
+
+def _quoted_bytes(text: bytes) -> tuple[bytes, bytes]:
+    out = bytearray()
+    index = 1
+    while index < len(text):
+        char = text[index]
+        if char == 92 and index + 1 < len(text):
+            out.append(text[index + 1])
+            index += 2
+            continue
+        if char == 34:
+            return bytes(out), text[index + 1:]
+        out.append(char)
+        index += 1
+    return bytes(out), b""
+
+
+def _decode_filename_star(value: bytes) -> str:
+    text = value.decode("ascii")
+    marker = "utf-8''"
+    if text.lower().startswith(marker):
+        return unquote(text[len(marker):], encoding="utf-8")
+    return unquote(text, encoding="utf-8")
+
+
 def _multipart_parts(content_type: str, body: bytes):
     message = email.message_from_bytes(
         b"Content-Type: " + content_type.encode("utf-8") + b"\r\n\r\n" + body
@@ -381,6 +509,7 @@ def _teacher_response(
     body: str,
     headers: str,
     uploads=None,
+    filenames=None,
 ):
     if len(parts) >= 2 and parts[1] == "login" and method == "POST":
         return _teacher_login(room, body)
@@ -436,7 +565,7 @@ def _teacher_response(
             except RosterError as error:
                 message = str(error)
             return _html(room.teacher.list_tasks(message))
-    response = teacher_response_for(room.teacher, method, rest, body)
+    response = teacher_response_for(room.teacher, method, rest, body, uploads, filenames)
     if method == "POST" and len(parts) == 3 and parts[1] == "tasks":
         action = parse_qs(body, keep_blank_values=True).get("action", [""])[-1]
         task_id = parts[2]
@@ -500,6 +629,7 @@ def production_classroom(*, post, api_key=None) -> Classroom:
         objectives,
         generation,
         path=os.path.abspath("classroom.json"),
+        complete=complete,
     )
 
 
@@ -518,14 +648,16 @@ def serve(room: Classroom, port: int) -> None:
             raw_bytes = self.rfile.read(length)
             content_type = self.headers.get("Content-Type", "") or ""
             uploads = None
+            filenames = None
             if "multipart/form-data" in content_type.lower():
                 uploads = files_from_body(content_type, raw_bytes)
+                filenames = filenames_from_body(content_type, raw_bytes)
                 raw = _fields_from_multipart(content_type, raw_bytes)
             else:
                 raw = raw_bytes.decode("utf-8")
             headers = self.headers.get("Cookie", "")
             response = response_for(
-                room, self.command, self.path, raw, time.monotonic(), headers, uploads
+                room, self.command, self.path, raw, time.monotonic(), headers, uploads, filenames
             )
             self.send_response(response.status)
             self.send_header("Content-Type", response.content_type)

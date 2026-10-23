@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 
+from scaffolding.documents import StoredDocument
 from scaffolding.generation import LessonOrigin, StageOrigin
 from scaffolding.knowledge import CurriculumStandard, LessonSource, StandardSource, TextbookLesson
 from scaffolding.objectives import Objective
@@ -84,10 +85,15 @@ def classroom_state(room) -> dict:
             _work_data(room, account, task_id, work)
             for (account, task_id), work in room.classwork._works.items()
         ],
-        "lessons": [_lesson_data(lesson) for lesson in room.knowledge._lessons.values()],
-        "standards": [_standard_data(standard) for standard in room.knowledge._standards.values()],
-        "objectives": _objective_state(room),
+        "lessons": [],
+        "standards": [],
+        "objectives": {"lessons": [], "stages": [], "next_id": 1},
         "origins": _origin_state(room),
+        "next_document": room.documents._next,
+        "documents": [
+            {"doc_id": item.doc_id, "name": item.name, "chunks": list(item.chunks)}
+            for item in room.documents.documents()
+        ],
     }
 
 
@@ -101,6 +107,12 @@ def _apply(room, data: dict) -> None:
     _apply_knowledge(room, data)
     _apply_objectives(room, data)
     _apply_origins(room, data)
+    loaded = tuple(
+        StoredDocument(item["doc_id"], item["name"], tuple(item["chunks"]))
+        for item in data.get("documents", [])
+    )
+    next_id = data.get("next_document", len(loaded) + 1)
+    room.documents.load(loaded, next_id)
     room.student_pages.clear()
     room.student.sessions.clear()
     room.student.shown_at.clear()
@@ -164,30 +176,15 @@ def _apply_classwork(room, data: dict) -> None:
 
 
 def _apply_knowledge(room, data: dict) -> None:
-    lessons = {}
-    for item in data["lessons"]:
-        lesson = TextbookLesson(
-            item["version"], item["volume"], item["lesson"], item["stage"], item["pages"], item["text"]
-        )
-        lessons[(lesson.version, lesson.volume, lesson.lesson)] = lesson
-    standards = {}
-    for item in data["standards"]:
-        standard = CurriculumStandard(item["name"], item["stage"], item["clauses"], item["text"])
-        standards[standard.stage] = standard
-    room.knowledge._lessons = lessons
-    room.knowledge._standards = standards
+    room.knowledge._lessons = {}
+    room.knowledge._standards = {}
 
 
 def _apply_objectives(room, data: dict) -> None:
     catalog = room.objectives
     catalog._lessons = {}
-    for group in data["objectives"]["lessons"]:
-        key = (group["version"], group["volume"], group["lesson"])
-        catalog._lessons[key] = tuple(_objective(item) for item in group["items"])
     catalog._stages = {}
-    for group in data["objectives"]["stages"]:
-        catalog._stages[group["stage"]] = tuple(_objective(item) for item in group["items"])
-    catalog._next_id = data["objectives"].get("next_id", _next_objective(data["objectives"]))
+    catalog._next_id = 1
 
 
 def _apply_origins(room, data: dict) -> None:

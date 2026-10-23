@@ -2,6 +2,7 @@ import base64
 import json
 import os
 
+from scaffolding import store
 from scaffolding.agents import ScaffoldDraft
 from scaffolding.classroom import Classroom, production_classroom, response_for
 from scaffolding.generation import LessonOrigin, TaskGeneration
@@ -12,6 +13,7 @@ from scaffolding.scripted import ScriptedDecisionAgent, ScriptedScaffoldAgent
 from scaffolding.session import Scaffold, Session
 from scaffolding.tasks import TaskCatalog
 from tests.classroom_helpers import form, teacher_cookie, text
+from tests.test_documents import _docx, _pdf
 from tests.test_sheet import _xlsx
 
 
@@ -28,6 +30,8 @@ _KEYS = (
     "standards",
     "objectives",
     "origins",
+    "documents",
+    "next_document",
 )
 
 
@@ -245,10 +249,13 @@ def test_the_saved_classroom_reloads_without_login_or_the_model(tmp_path):
     assert second.catalog.get("task-1").questions[0].prompt == "判断说法"
     assert second.teacher.drafts["task-2"][0].prompt == "还没保存的题干"
     assert second.classwork.assigned("task-1") == ("class-1",)
-    assert second.knowledge.get_lesson("人教版", "必修一", "信息系统的组成").text == "课时原文"
-    assert second.knowledge.get_standard("高中").name == "普通高中信息科技课程标准"
-    found = second.objectives.lesson_objectives("人教版", "必修一", "信息系统的组成")
-    assert found[0].statement == "能分辨系统和要素"
+    assert saved["lessons"] == []
+    assert saved["standards"] == []
+    assert saved["objectives"]["lessons"] == []
+    assert saved["objectives"]["stages"] == []
+    assert second.knowledge.lesson_count() == 0
+    assert second.knowledge.standard_count() == 0
+    assert second.objectives.lesson_objectives("人教版", "必修一", "信息系统的组成") == ()
     assert second.generation.origin("task-1") == LessonOrigin("人教版", "必修一", "信息系统的组成")
     work = second.classwork._works[("s1", "task-1")]
     assert work.answers[0].selected == ("正确",)
@@ -269,6 +276,30 @@ def test_the_saved_classroom_reloads_without_login_or_the_model(tmp_path):
     assert scaffold.calls == []
     assert asset.status == 200
     assert asset.body == _RAW
+
+
+def test_documents_reload_and_old_field_records_are_ignored(tmp_path):
+    path = tmp_path / "classroom.json"
+    page = _room(path)
+    page.documents.add("教材.docx", _docx((("第一章 数据", ""), ("正文", ""))))
+    page.documents.delete("doc-1")
+    page.documents.add("课标.pdf", _pdf(("第一节 信息", "条款")))
+    store.save_classroom(path, page)
+    raw = {
+        "lessons": [{"version": "人教版", "volume": "必修一", "lesson": "旧课", "stage": "高中", "pages": "1", "text": "旧原文"}],
+        "standards": [{"name": "旧课标", "stage": "高中", "clauses": "1", "text": "旧全文"}],
+        "objectives": {"lessons": [], "stages": [], "next_id": 4},
+    }
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    saved.update(raw)
+    path.write_text(json.dumps(saved, ensure_ascii=False), encoding="utf-8")
+
+    second = _room(path)
+
+    assert [item.doc_id for item in second.documents.documents()] == ["doc-2"]
+    assert second.documents.documents()[0].chunks == ("第一节 信息\n条款",)
+    assert second.knowledge.lesson_count() == 0
+    assert second.knowledge.standard_count() == 0
 
 
 def test_one_students_login_keeps_the_other_restored_session(tmp_path):

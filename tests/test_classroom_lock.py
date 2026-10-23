@@ -52,7 +52,7 @@ def test_two_response_for_calls_on_one_room_are_exclusive(monkeypatch):
     gate = threading.Lock()
     original = classroom._dispatch_response
 
-    def dispatch(current, method, path, body, now, headers="", uploads=None):
+    def dispatch(current, method, path, body, now, headers="", uploads=None, filenames=None):
         with gate:
             active["count"] += 1
             active["max"] = max(active["max"], active["count"])
@@ -61,7 +61,7 @@ def test_two_response_for_calls_on_one_room_are_exclusive(monkeypatch):
             entered.set()
             assert release.wait(10)
         try:
-            return original(current, method, path, body, now, headers, uploads)
+            return original(current, method, path, body, now, headers, uploads, filenames)
         finally:
             with gate:
                 active["count"] -= 1
