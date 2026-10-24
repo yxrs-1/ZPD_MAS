@@ -15,9 +15,7 @@ def test_the_classroom_entry_has_no_tasks(tmp_path, monkeypatch):
 
     home = text(response_for(room, "GET", "/", "", 0))
 
-    assert "<h1>课堂</h1>" in home
-    assert 'href="/teacher"' in home
-    assert 'href="/student"' in home
+    assert "<h1>登录</h1>" in home
     assert "task-" not in home
     assert isinstance(room.generation._text_generator, ModelTextGenerator)
     monkeypatch.chdir(ROOT)

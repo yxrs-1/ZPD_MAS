@@ -124,3 +124,60 @@ def test_deleting_a_class_removes_its_accounts_only():
     assert roster.authenticate_student("s2", "secret").name == "乙"
     with pytest.raises(RosterError, match="班级不存在"):
         roster.students(first.class_id)
+
+
+def test_register_student_appends_one_person_or_rejects_in_order():
+    roster = Roster()
+
+    with pytest.raises(RosterError, match="先由教师创建班级"):
+        roster.register_student("class-1", "s1", "secret", "甲")
+    created = roster.create_class("一班")
+    roster.import_rows(created.class_id, ((2, "s1", "secret", "甲"),))
+    with pytest.raises(RosterError, match="先选择班级"):
+        roster.register_student("  ", "s2", "secret", "乙")
+    with pytest.raises(RosterError, match="班级不存在"):
+        roster.register_student("class-9", "s2", "secret", "乙")
+    with pytest.raises(RosterError, match="账号或密码为空"):
+        roster.register_student(created.class_id, "  ", "secret", "乙")
+    with pytest.raises(RosterError, match="姓名为空"):
+        roster.register_student(created.class_id, "s2", "secret", "  ")
+    with pytest.raises(RosterError, match="账号已经存在"):
+        roster.register_student(created.class_id, " s1 ", "other", "丙")
+
+    added = roster.register_student(created.class_id, " s2 ", " secret ", " 乙 ")
+    same_name = roster.register_student(created.class_id, "s3", "secret", "乙")
+
+    assert added == roster.authenticate_student("s2", "secret")
+    assert [item.account for item in roster.students(created.class_id)] == ["s1", "s2", "s3"]
+    assert same_name.name == "乙"
+    assert roster.authenticate_student("s1", "other") is None
+
+
+def test_move_student_changes_class_or_rejects_in_order():
+    roster = Roster()
+    first = roster.create_class("一班")
+    second = roster.create_class("二班")
+    roster.import_rows(first.class_id, ((2, "s1", "secret", "甲"),))
+    kept = roster.student(first.class_id, "s1")
+
+    same = roster.move_student("s1", first.class_id)
+    assert same is kept
+    assert roster.students(first.class_id) == (kept,)
+
+    with pytest.raises(RosterError, match="学生不存在"):
+        roster.move_student("  ", second.class_id)
+    with pytest.raises(RosterError, match="学生不存在"):
+        roster.move_student("missing", second.class_id)
+    with pytest.raises(RosterError, match="先选择班级"):
+        roster.move_student("s1", "  ")
+    with pytest.raises(RosterError, match="班级不存在"):
+        roster.move_student("s1", "class-9")
+    assert roster.student(first.class_id, "s1").class_id == first.class_id
+
+    moved = roster.move_student(" s1 ", second.class_id)
+    assert moved.account == "s1"
+    assert moved.password == "secret"
+    assert moved.name == "甲"
+    assert moved.class_id == second.class_id
+    assert roster.students(first.class_id) == ()
+    assert roster.students(second.class_id) == (moved,)

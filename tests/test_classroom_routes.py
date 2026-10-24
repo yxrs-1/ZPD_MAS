@@ -7,10 +7,8 @@ def test_the_root_links_to_the_teacher_and_the_student():
 
     html = text(response_for(page, "GET", "/", "", 0))
 
-    assert "<h1>课堂</h1>" in html
-    assert html.index("教师") < html.index("学生")
-    assert 'href="/teacher"' in html
-    assert 'href="/student"' in html
+    assert "<h1>登录</h1>" in html
+    assert 'name="role"' in html
     assert "task-" not in html
 
 

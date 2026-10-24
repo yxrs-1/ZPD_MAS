@@ -23,8 +23,11 @@ def test_the_objectives_form_links_to_a_blank_generation_page():
     generated = text(response_for(page, "GET", "/generation/?ready=1", ""))
     listed = text(response_for(page, "GET", "/", ""))
 
-    assert 'href="/teacher/generation">生成</a>' in opened
+    assert 'href="/teacher/generation"' not in opened
     assert 'action="/teacher/objectives"' in opened
+    assert 'name="text"' in opened
+    assert "生成目标" in opened
+    assert 'name="file"' not in opened
     assert "<textarea name=\"text\"></textarea>" in generated
     assert "生成失败，没有创建任务" not in generated
     assert 'action="/teacher/generation"' in generated

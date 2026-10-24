@@ -14,6 +14,7 @@ from scaffolding.knowledge import KnowledgeBase
 from scaffolding.objectives import ObjectiveCatalog
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 from scaffolding.roster import RosterError
+from scaffolding.tasks import TaskCatalog
 
 
 KINDS = ("单选", "多选", "判断", "综合")
@@ -46,7 +47,7 @@ class _EmptyExtractor:
 class TeacherPage:
     def __init__(
         self,
-        catalog,
+        catalog=None,
         prefix: str = "",
         roster=None,
         *,
@@ -57,7 +58,7 @@ class TeacherPage:
         library=None,
         complete=None,
     ) -> None:
-        self.catalog = catalog
+        self.catalog = catalog if catalog is not None else TaskCatalog()
         self.drafts = {}
         self.prefix = prefix
         self.roster = roster
@@ -76,11 +77,13 @@ class TeacherPage:
     def open_objectives(self, message: str = "", text: str = "", objectives: str = "") -> str:
         return _render_library(self, message, text, objectives)
 
+    def open_documents(self, message: str = "") -> str:
+        return _render_documents(self, message)
+
+    def open_accounts(self, message: str = "") -> str:
+        return _render_accounts(self, message)
+
     def apply_objectives(self, fields, action: str, uploads=None, filenames=None) -> str:
-        if action == "上传":
-            return _upload_document(self, uploads or {}, filenames or {})
-        if action == "删除":
-            return _delete_document(self, fields.get("doc_id", [""])[-1])
         if action == "生成目标":
             return _draft_on_page(self, fields.get("text", [""])[-1])
         if action == "确认":
@@ -93,7 +96,7 @@ class TeacherPage:
 
     def open_task(self, task_id: str) -> str:
         if task_id not in self.catalog._tasks:
-            return _missing()
+            return _missing(self)
         return _render(self, task_id)
 
     def open_generation(self, message: str = "", text: str = "") -> str:
@@ -106,7 +109,7 @@ class TeacherPage:
             + "<textarea name=\"text\">" + escape(text) + "</textarea>"
             + "<button type=\"submit\">生成</button></form>"
         )
-        return _document(body)
+        return _shell_document(self, body, "任务")
 
     def apply_generation(self, text: str) -> str:
         if text.strip() == "" or self.generation is None:
@@ -119,7 +122,7 @@ class TeacherPage:
 
     def apply(self, task_id: str, fields: dict, action: str) -> str:
         if task_id not in self.catalog._tasks:
-            return _missing()
+            return _missing(self)
         task = self.catalog.get(task_id)
         if action == "delete":
             self.drafts.pop(task_id, None)
@@ -166,29 +169,17 @@ def _render_list(page: TeacherPage, message: str = "") -> str:
         )
     extra = ""
     if page.roster is not None:
-        action = page.prefix if page.prefix else "/"
-        extra = (
-            "<a href=\"" + _with_prefix(page.prefix, "/classes") + "\">班级</a>"
-            + "<form method=\"post\" action=\"" + action + "\">"
-            + "<input name=\"old_password\">"
-            + "<input name=\"password\">"
-            + "<button type=\"submit\" name=\"action\" value=\"修改密码\">修改密码</button></form>"
-            + "<form method=\"post\" action=\"" + action + "\">"
-            + "<button type=\"submit\" name=\"action\" value=\"退出\">退出</button></form>"
-        )
+        extra = "<a href=\"" + _with_prefix(page.prefix, "/classes") + "\">班级</a>"
     notice = ""
     if message:
         notice = "<p>" + escape(message) + "</p>"
     body = (
         "<h1>任务列表</h1>" + notice
-        + "<form method=\"post\" action=\""
-        + _with_prefix(page.prefix, "/tasks") + "\">"
-        + "<button type=\"submit\">新建</button></form>"
-        + "<a href=\"" + _with_prefix(page.prefix, "/objectives") + "\">目标</a>"
+        + "<a href=\"" + _with_prefix(page.prefix, "/tasks/new") + "\">新建</a>"
         + extra
         + "<ul>" + "".join(items) + "</ul>"
     )
-    return _document(body)
+    return _shell_document(page, body, "任务")
 
 
 def _fact(task) -> str:
@@ -199,12 +190,49 @@ def _fact(task) -> str:
     return "未发布"
 
 
-def _document(body: str) -> str:
-    return "<!DOCTYPE html><html lang=\"zh\"><body>" + body + "</body></html>"
+def teacher_shell(body: str, prefix: str, current: str, account: str) -> str:
+    root = prefix if prefix else "/"
+    def item(label: str, path: str) -> str:
+        href = prefix + path
+        mark = " class=\"current\"" if label == current else ""
+        return "<a" + mark + " href=\"" + href + "\">" + label + "</a>"
+    nav = (
+        "<nav class=\"teacher-nav\">"
+        + "<img class=\"logo\" src=\"/static/logo.png\" alt=\"zpd_MAS\">"
+        + item("任务", "/")
+        + item("班级", "/classes")
+        + item("资料库", "/documents")
+        + item("账号管理", "/accounts")
+        + "<button type=\"button\" class=\"account\">" + escape(account) + "</button>"
+        + "<div class=\"account-card\">"
+        + "<form method=\"post\" action=\"" + root + "\">"
+        + "<input name=\"old_password\"><input name=\"password\">"
+        + "<button type=\"submit\" name=\"action\" value=\"修改密码\">修改密码</button></form>"
+        + "<form method=\"post\" action=\"" + root + "\">"
+        + "<button type=\"submit\" name=\"action\" value=\"退出\">退出</button></form>"
+        + "</div></nav>"
+    )
+    return nav + "<div class=\"teacher-main\">" + body + "</div>"
 
 
-def _missing() -> str:
-    return _document("<h1>任务不存在</h1>")
+def _document(body: str, prefix: str = "", current: str = "任务", account: str = "账号") -> str:
+    wrapped = teacher_shell(body, prefix, current, account)
+    return (
+        "<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<link rel=\"stylesheet\" href=\"/static/classroom.css\"></head><body>"
+        + wrapped
+        + "<script src=\"/static/teacher.js\"></script></body></html>"
+    )
+
+
+def _shell_document(page: TeacherPage, body: str, current: str) -> str:
+    account = page.roster.teacher_account if page.roster is not None else "账号"
+    return _document(body, page.prefix, current, account)
+
+
+def _missing(page: TeacherPage) -> str:
+    return _shell_document(page, "<h1>任务不存在</h1>", "任务")
 
 
 def _html(text: str, status: int = 200) -> PageResponse:
@@ -225,7 +253,7 @@ def _render(page: TeacherPage, task_id: str, message: str = "") -> str:
             "<form method=\"post\" action=\"" + action + "\">"
             + "<button type=\"submit\" name=\"action\" value=\"delete\">删除</button></form>"
         )
-        return _document("".join(parts))
+        return _shell_document(page, "".join(parts), "任务")
     questions, has_draft = _shown(page, task_id)
     action = _with_prefix(page.prefix, "/tasks/" + quote(task_id, safe=""))
     parts.append("<form method=\"post\" action=\"" + action + "\">")
@@ -244,7 +272,7 @@ def _render(page: TeacherPage, task_id: str, message: str = "") -> str:
         parts.append("<button type=\"submit\" name=\"action\" value=\"publish\">发布</button>")
     parts.append("<button type=\"submit\" name=\"action\" value=\"delete\">删除</button></form>")
     parts.append(_assignment(page, task_id))
-    return _document("".join(parts))
+    return _shell_document(page, "".join(parts), "任务")
 
 
 def _assignment(page: TeacherPage, task_id: str) -> str:
@@ -526,33 +554,90 @@ def _map_choice(draft: tuple, index: int, change) -> tuple:
     return tuple(items)
 
 
-def _render_library(page, message: str, text: str, objectives: str) -> str:
-    action = _with_prefix(page.prefix, "/objectives")
-    parts = ["<h1>目标</h1>"]
+def _render_documents(page, message: str) -> str:
+    action = _with_prefix(page.prefix, "/documents")
+    parts = ["<h1>资料库</h1>"]
     if message:
         parts.append("<p>" + escape(message) + "</p>")
-    if page.library.documents():
-        items = []
-        for item in page.library.documents():
-            items.append(
-                "<li>" + escape(item.name)
-                + "<form method=\"post\" action=\"" + action + "\">"
-                + "<input type=\"hidden\" name=\"action\" value=\"删除\">"
-                + "<input type=\"hidden\" name=\"doc_id\" value=\"" + escape(item.doc_id) + "\">"
-                + "<button type=\"submit\">删除</button></form></li>"
-            )
-        parts.append("<ul>" + "".join(items) + "</ul>")
+    for item in page.library.documents():
+        parts.append(
+            "<li>" + escape(item.name)
+            + "<form method=\"post\" action=\"" + action + "\">"
+            + "<input type=\"hidden\" name=\"action\" value=\"删除\">"
+            + "<input type=\"hidden\" name=\"doc_id\" value=\"" + escape(item.doc_id) + "\">"
+            + "<button type=\"submit\">删除</button></form></li>"
+        )
     parts.append(
         "<form method=\"post\" action=\"" + action + "\" enctype=\"multipart/form-data\">"
         + "<input type=\"hidden\" name=\"action\" value=\"上传\">"
         + "<input type=\"file\" name=\"file\">"
         + "<button type=\"submit\">上传</button></form>"
     )
+    return _shell_document(page, "".join(parts), "资料库")
+
+
+def _render_accounts(page, message: str) -> str:
+    action = _with_prefix(page.prefix, "/accounts")
+    parts = ["<h1>账号管理</h1>"]
+    if message:
+        parts.append("<p>" + escape(message) + "</p>")
+    if page.roster is None:
+        return _shell_document(page, "".join(parts), "账号管理")
+    for item in page.roster.classes():
+        for student in page.roster.students(item.class_id):
+            options = []
+            for choice in page.roster.classes():
+                selected = " selected" if choice.class_id == student.class_id else ""
+                options.append(
+                    "<option value=\"" + escape(choice.class_id) + "\"" + selected + ">"
+                    + escape(choice.name) + "</option>"
+                )
+            parts.append(
+                "<li>" + escape(student.name) + " " + escape(student.account) + " " + escape(item.name)
+                + "<form method=\"post\" action=\"" + action + "\">"
+                + "<input type=\"hidden\" name=\"account\" value=\"" + escape(student.account) + "\">"
+                + "<input name=\"password\">"
+                + "<button type=\"submit\" name=\"action\" value=\"重置密码\">重置密码</button></form>"
+                + "<form method=\"post\" action=\"" + action + "\">"
+                + "<input type=\"hidden\" name=\"account\" value=\"" + escape(student.account) + "\">"
+                + "<select name=\"class_id\">" + "".join(options) + "</select>"
+                + "<button type=\"submit\" name=\"action\" value=\"换班\">换班</button></form></li>"
+            )
+    return _shell_document(page, "".join(parts), "账号管理")
+
+
+def _apply_accounts(page, fields) -> str:
+    action = fields.get("action", [""])[-1]
+    account = fields.get("account", [""])[-1].strip()
+    student = None if page.roster is None else page.roster._students.get(account)
+    if action == "重置密码":
+        if student is None:
+            return page.open_accounts("学生不存在")
+        try:
+            page.roster.reset_password(student.class_id, account, fields.get("password", [""])[-1])
+        except RosterError as error:
+            return page.open_accounts(str(error))
+        return page.open_accounts("密码已重置")
+    if action == "换班":
+        if page.roster is None or student is None:
+            return page.open_accounts("学生不存在")
+        try:
+            page.roster.move_student(account, fields.get("class_id", [""])[-1])
+        except RosterError as error:
+            return page.open_accounts(str(error))
+        return page.open_accounts()
+    return page.open_accounts()
+
+
+def _render_library(page, message: str, text: str, objectives: str) -> str:
+    action = _with_prefix(page.prefix, "/objectives")
+    parts = ["<h1>目标</h1>"]
+    if message:
+        parts.append("<p>" + escape(message) + "</p>")
     parts.append(
         "<form method=\"post\" action=\"" + action + "\">"
         + "<textarea name=\"text\">" + escape(text) + "</textarea>"
-        + "<button type=\"submit\" name=\"action\" value=\"生成目标\">生成目标</button>"
-        + "<a href=\"" + _with_prefix(page.prefix, "/generation") + "\">生成</a></form>"
+        + "<button type=\"submit\" name=\"action\" value=\"生成目标\">生成目标</button></form>"
     )
     if objectives:
         parts.append(
@@ -562,27 +647,27 @@ def _render_library(page, message: str, text: str, objectives: str) -> str:
             + "<textarea name=\"objectives\">" + escape(objectives) + "</textarea>"
             + "<button type=\"submit\">确认</button></form>"
         )
-    return _document("".join(parts))
+    return _shell_document(page, "".join(parts), "任务")
 
 
 def _upload_document(page, uploads: dict, filenames: dict) -> str:
     name = filenames.get("file", "")
     content = uploads.get("file")
     if content is None:
-        return page.open_objectives("只接受 docx 或 pdf")
+        return page.open_documents("只接受 docx 或 pdf")
     try:
         page.library.add(name, content)
     except DocumentError as error:
-        return page.open_objectives(error.message)
-    return page.open_objectives()
+        return page.open_documents(error.message)
+    return page.open_documents()
 
 
 def _delete_document(page, doc_id: str) -> str:
     try:
         page.library.delete(doc_id)
     except DocumentError as error:
-        return page.open_objectives(error.message)
-    return page.open_objectives()
+        return page.open_documents(error.message)
+    return page.open_documents()
 
 
 def _draft_on_page(page, text: str) -> str:
@@ -619,16 +704,34 @@ def response_for(page: TeacherPage, method: str, path: str, body: str, uploads=N
         return _html(page.list_tasks())
     if method == "POST" and parts == ["tasks"]:
         return _html(page.create_task())
+    if parts == ["tasks", "new"] and method == "GET":
+        body = (
+            "<h1>新建任务</h1>"
+            + "<form method=\"post\" action=\"" + _with_prefix(page.prefix, "/tasks") + "\">"
+            + "<button type=\"submit\">手动添加</button></form>"
+            + "<a href=\"" + _with_prefix(page.prefix, "/objectives") + "\">智能体生成</a>"
+        )
+        return _html(_shell_document(page, body, "任务"))
     if len(parts) == 2 and parts[0] == "tasks":
         task_id = parts[1]
         if task_id not in page.catalog._tasks:
-            return _html(_missing(), 404)
+            return _html(_missing(page), 404)
         if method == "GET":
             return _html(page.open_task(task_id))
         if method == "POST":
             fields = parse_qs(body, keep_blank_values=True)
             action = fields.get("action", [""])[-1]
             return _html(page.apply(task_id, fields, action))
+    if parts == ["documents"] and method == "GET":
+        return _html(page.open_documents())
+    if parts == ["documents"] and method == "POST":
+        fields = parse_qs(body, keep_blank_values=True)
+        action = fields.get("action", [""])[-1]
+        if action == "上传":
+            return _html(_upload_document(page, uploads or {}, filenames or {}))
+        if action == "删除":
+            return _html(_delete_document(page, fields.get("doc_id", [""])[-1]))
+        return _html(page.open_documents())
     if parts == ["objectives"] and method == "GET":
         return _html(page.open_objectives())
     if parts == ["objectives"] and method == "POST":
@@ -641,7 +744,11 @@ def response_for(page: TeacherPage, method: str, path: str, body: str, uploads=N
         fields = parse_qs(body, keep_blank_values=True)
         text = fields.get("text", [""])[-1]
         return _html(page.apply_generation(text))
-    return _html(_missing(), 404)
+    if parts == ["accounts"] and method == "GET":
+        return _html(page.open_accounts())
+    if parts == ["accounts"] and method == "POST":
+        return _html(_apply_accounts(page, parse_qs(body, keep_blank_values=True)))
+    return _html(_missing(page), 404)
 
 
 def serve(page: TeacherPage, port: int) -> None:

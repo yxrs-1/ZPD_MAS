@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
 
@@ -147,6 +148,34 @@ class ModelQuestionGenerator:
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 
 
+def model_limit() -> int:
+    raw = os.environ.get("DEEPSEEK_CONCURRENCY")
+    if raw is None:
+        return 16
+    text = raw.strip()
+    if text == "" or not text.isascii() or not text.isdigit():
+        return 16
+    value = int(text)
+    if value < 1:
+        return 16
+    return value
+
+
+_slots = None
+_slots_limit = None
+_slots_guard = threading.Lock()
+
+
+def _model_slots():
+    global _slots, _slots_limit
+    limit = model_limit()
+    with _slots_guard:
+        if _slots is None or _slots_limit != limit:
+            _slots = threading.BoundedSemaphore(limit)
+            _slots_limit = limit
+        return _slots
+
+
 def deepseek_complete(messages, *, post, api_key: str | None = None) -> str:
     key = os.environ.get("DEEPSEEK_API_KEY") if api_key is None else api_key
     if key is None or key.strip() == "":
@@ -158,11 +187,12 @@ def deepseek_complete(messages, *, post, api_key: str | None = None) -> str:
         "thinking": {"type": "disabled"},
     }
     try:
-        status, response = post(
-            DEEPSEEK_URL,
-            {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            payload,
-        )
+        with _model_slots():
+            status, response = post(
+                DEEPSEEK_URL,
+                {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                payload,
+            )
     except Rejected:
         raise
     except Exception as error:

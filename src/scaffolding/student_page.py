@@ -148,7 +148,12 @@ class StudentPage:
 
 
 def _document(body: str) -> str:
-    return "<!DOCTYPE html><html lang=\"zh\"><body>" + body + "</body></html>"
+    return (
+        "<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<link rel=\"stylesheet\" href=\"/static/classroom.css\"></head><body>"
+        + body + "</body></html>"
+    )
 
 
 def _missing() -> str:

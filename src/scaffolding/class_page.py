@@ -5,6 +5,7 @@ from scaffolding.classwork import StudentView
 from scaffolding.records import ChoiceQuestion, OpenQuestion, TrueFalseQuestion
 from scaffolding.roster import RosterError
 from scaffolding.sheet import SheetError, read_student_rows
+from scaffolding.teacher_page import teacher_shell
 
 
 def class_response(page, method, path, fields, uploads) -> str:
@@ -64,8 +65,15 @@ def _prefix() -> str:
     return "/teacher"
 
 
-def _document(body: str) -> str:
-    return "<!DOCTYPE html><html lang=\"zh\"><body>" + body + "</body></html>"
+def _document(page, body: str, current: str = "班级") -> str:
+    wrapped = teacher_shell(body, "/teacher", current, page.roster.teacher_account)
+    return (
+        "<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<link rel=\"stylesheet\" href=\"/static/classroom.css?v=8\"></head><body>"
+        + wrapped
+        + "<script src=\"/static/teacher.js\"></script></body></html>"
+    )
 
 
 def _create(page, fields) -> str:
@@ -92,7 +100,7 @@ def _list(page, message: str = "") -> str:
         + "<button type=\"submit\" name=\"action\" value=\"创建\">创建</button></form>"
         + "<ul>" + "".join(items) + "</ul>"
     )
-    return _document(body)
+    return _document(page, body)
 
 
 def _class_page(page, class_id: str, message: str = "", failures=()) -> str:
@@ -123,7 +131,7 @@ def _class_page(page, class_id: str, message: str = "", failures=()) -> str:
         + "<button type=\"submit\" name=\"action\" value=\"删除班级\">删除班级</button></form>"
         + "<ul>" + "".join(students) + "</ul>"
     )
-    return _document(body)
+    return _document(page, body)
 
 
 def _import_students(page, class_id: str, uploads) -> str:
@@ -161,7 +169,7 @@ def _student_page(page, class_id: str, account: str, message: str = "") -> str:
         + "<button type=\"submit\" name=\"action\" value=\"移除\">移除</button></form>"
         + "<ul>" + "".join(_task_items(page, class_id, account)) + "</ul>"
     )
-    return _document(body)
+    return _document(page, body)
 
 
 def _rename(page, class_id: str, account: str, fields) -> str:
@@ -180,8 +188,8 @@ def _reset(page, class_id: str, account: str, fields) -> str:
         return _student_page(page, class_id, account, str(error))
 
 
-def missing_task_page() -> str:
-    return _document("<h1>任务不存在</h1>")
+def missing_task_page(page) -> str:
+    return _document(page, "<h1>任务不存在</h1>")
 
 
 def class_asset(page, path: str) -> tuple[str, bytes] | None:
@@ -214,9 +222,9 @@ def _task_response(page, class_id: str, account: str, parts: list[str]) -> str:
         return ""
     found = _assigned(page, class_id, account, parts[5])
     if found is None:
-        return missing_task_page()
+        return missing_task_page(page)
     task, work = found
-    return _task_detail(class_id, account, task, work)
+    return _task_detail(page, class_id, account, task, work)
 
 
 def _task_items(page, class_id: str, account: str) -> list[str]:
@@ -236,14 +244,14 @@ def _task_items(page, class_id: str, account: str) -> list[str]:
     return items
 
 
-def _task_detail(class_id: str, account: str, task, work) -> str:
+def _task_detail(page, class_id: str, account: str, task, work) -> str:
     questions = task.questions if work is None else work.questions
     parts = ["<h1>" + escape(task.task_id) + "</h1><p>" + escape(_status(work)) + "</p>"]
     for index, question in enumerate(questions):
         answer = None if work is None else work.answers[index]
         parts.append(_read_question(question, answer))
     if work is None:
-        return _document("".join(parts))
+        return _document(page, "".join(parts))
     parts.append("<p>停留" + str(int(work.behavior.dwell_seconds)) + "</p>")
     if work.behavior.helps:
         parts.append("<h2>求助</h2><ul>")
@@ -258,7 +266,7 @@ def _task_detail(class_id: str, account: str, task, work) -> str:
         parts.append("<h2>对话</h2>")
         for index, turn in enumerate(work.dialogue):
             parts.append(_turn(base, index, turn))
-    return _document("".join(parts))
+    return _document(page, "".join(parts))
 
 
 def _read_question(question, answer) -> str:

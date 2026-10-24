@@ -30,9 +30,12 @@ def test_the_classroom_prefixes_objectives_and_hides_them_from_the_student():
     student = response_for(room, "GET", "/student/objectives", "", 1, student_cookie(room))
 
     assert "目标" not in home
-    assert 'href="/teacher/objectives"' in listed
+    assert 'href="/teacher/tasks/new"' in listed
+    assert ">目标<" not in listed
     assert "生成目标" in opened
-    assert 'name="file"' in opened
+    assert 'name="text"' in opened
+    assert 'name="file"' not in opened
+    assert 'href="/teacher/generation"' not in opened
     assert student.status == 404
     assert "任务不存在" in text(student)
     assert "课时原文" not in text(student)
