@@ -46,16 +46,15 @@ def test_get_lists_upload_and_does_not_call_the_model():
     calls = []
     page, _catalog = _page(calls)
 
-    listed = text(response_for(page, "GET", "/", ""))
     opened = text(response_for(page, "GET", "/objectives/?ready=1", ""))
+    library = text(response_for(page, "GET", "/documents", ""))
 
-    assert 'href="/objectives"' in listed
-    assert 'name="file"' in opened
-    assert "上传" in opened
     assert 'name="text"' in opened
     assert "生成目标" in opened
-    assert 'href="/generation"' in opened
+    assert 'name="file"' not in opened
+    assert 'href="/generation"' not in opened
     assert 'name="objectives"' not in opened
+    assert 'name="file"' in library
     assert calls == []
 
 
@@ -65,12 +64,12 @@ def test_upload_delete_and_a_bad_extension():
     content = _docx((("第一章 数据", ""), ("片段秘密", "")))
 
     uploaded = text(response_for(
-        page, "POST", "/objectives", form(action="上传"),
+        page, "POST", "/documents", form(action="上传"),
         {"file": content}, {"file": "a<b.docx"},
     ))
-    missing = text(response_for(page, "POST", "/objectives", form(action="删除", doc_id="doc-9"), None, None))
+    missing = text(response_for(page, "POST", "/documents", form(action="删除", doc_id="doc-9"), None, None))
     rejected = text(response_for(
-        page, "POST", "/objectives", form(action="上传"),
+        page, "POST", "/documents", form(action="上传"),
         {"file": b"notes"}, {"file": "笔记.txt"},
     ))
 
@@ -80,7 +79,7 @@ def test_upload_delete_and_a_bad_extension():
     assert "只接受 docx 或 pdf" in rejected
     assert len(page.library.documents()) == 1
     assert calls == []
-    removed = text(response_for(page, "POST", "/objectives", form(action="删除", doc_id="doc-1"), None, None))
+    removed = text(response_for(page, "POST", "/documents", form(action="删除", doc_id="doc-1"), None, None))
     assert "a&lt;b.docx" not in removed
     assert page.library.documents() == ()
 
@@ -89,7 +88,7 @@ def test_draft_shows_editable_objectives_without_the_passage():
     calls = []
     page, _catalog = _page(calls)
     content = _docx((("第一章 数据", ""), ("片段秘密", "")))
-    response_for(page, "POST", "/objectives", form(action="上传"), {"file": content}, {"file": "教材.docx"})
+    response_for(page, "POST", "/documents", form(action="上传"), {"file": content}, {"file": "教材.docx"})
 
     drafted = text(response_for(page, "POST", "/objectives", form(action="生成目标", text="  识别数据  ")))
     blank = text(response_for(page, "POST", "/objectives", form(action="生成目标", text="  ")))

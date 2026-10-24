@@ -20,8 +20,12 @@ def test_the_classroom_links_generation_from_objectives_only():
 
     assert 'href="/teacher/generation"' not in home
     assert 'href="/teacher/generation"' not in listed
-    assert 'href="/teacher/objectives"' in listed
-    assert 'href="/teacher/generation">生成</a>' in objectives
+    assert 'href="/teacher/tasks/new"' in listed
+    assert ">目标<" not in listed
+    assert 'href="/teacher/generation"' not in objectives
+    assert 'name="text"' in objectives
+    assert "生成目标" in objectives
+    assert 'name="file"' not in objectives
     assert "<textarea name=\"text\"></textarea>" in opened
     assert "查看" not in opened
     assert student.status == 404

@@ -35,7 +35,7 @@ def test_a_logged_in_teacher_uploads_and_the_student_does_not_read_documents(tmp
     room = Classroom(TaskCatalog(), ScriptedDecisionAgent(), ScriptedScaffoldAgent(), path="classroom.json")
     headers = teacher_cookie(room)
     uploaded = response_for(
-        room, "POST", "/teacher/objectives", form(action="上传"), 0, headers,
+        room, "POST", "/teacher/documents", form(action="上传"), 0, headers,
         {"file": _docx((("第一章 数据", ""), ("正文", "")))},
         {"file": "教材.docx"},
     )

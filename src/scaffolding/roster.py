@@ -128,6 +128,28 @@ class Roster:
             added.append(student)
         return ImportResult(tuple(added), tuple(failures))
 
+    def register_student(self, class_id: str, account: str, password: str, name: str) -> StudentRecord:
+        if not self._classes:
+            raise RosterError("先由教师创建班级")
+        class_id = _clean(class_id)
+        if class_id == "":
+            raise RosterError("先选择班级")
+        if class_id not in self._classes:
+            raise RosterError("班级不存在")
+        account = _clean(account)
+        password = _clean(password)
+        name = _clean(name)
+        if account == "" or password == "":
+            raise RosterError("账号或密码为空")
+        if name == "":
+            raise RosterError("姓名为空")
+        if account in self._students:
+            raise RosterError("账号已经存在")
+        student = StudentRecord(account, password, name, class_id)
+        self._students[account] = student
+        self._members[class_id].append(account)
+        return student
+
     def rename_student(self, class_id: str, account: str, name: str) -> None:
         student = self.student(class_id, account)
         cleaned = _clean(name)
@@ -145,6 +167,24 @@ class Roster:
         self._students[account] = StudentRecord(
             student.account, cleaned, student.name, student.class_id
         )
+
+    def move_student(self, account: str, class_id: str) -> StudentRecord:
+        account = _clean(account)
+        student = self._students.get(account)
+        if account == "" or student is None:
+            raise RosterError("学生不存在")
+        class_id = _clean(class_id)
+        if class_id == "":
+            raise RosterError("先选择班级")
+        if class_id not in self._classes:
+            raise RosterError("班级不存在")
+        if student.class_id == class_id:
+            return student
+        self._members[student.class_id].remove(account)
+        updated = StudentRecord(student.account, student.password, student.name, class_id)
+        self._students[account] = updated
+        self._members[class_id].append(account)
+        return updated
 
     def remove_student(self, class_id: str, account: str) -> str:
         self.student(class_id, account)

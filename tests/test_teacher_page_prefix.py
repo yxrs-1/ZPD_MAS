@@ -14,7 +14,7 @@ def test_the_teacher_prefix_is_written_on_list_and_task_links():
     opened = page.open_task(task.task_id)
 
     assert 'href="/teacher/tasks/task-1"' in listed
-    assert 'action="/teacher/tasks"' in listed
+    assert 'href="/teacher/tasks/new"' in listed
     assert 'action="/teacher/tasks/task-1"' in opened
     assert 'action="/tasks"' not in listed
     assert 'action="/tasks/task-1"' not in opened

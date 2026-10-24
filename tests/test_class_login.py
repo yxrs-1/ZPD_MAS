@@ -14,7 +14,7 @@ def test_teacher_and_student_pages_require_login():
     assert "任务列表" not in text(teacher)
     assert "<h1>登录</h1>" in text(student)
     assert "待办" not in text(student)
-    assert 'href="/teacher"' in home and 'href="/student"' in home
+    assert "<h1>登录</h1>" in home and 'href="/student/register"' in home
 
 
 def test_the_preset_teacher_logs_in_changes_password_and_logs_out():

@@ -34,7 +34,7 @@ def test_a_started_task_is_read_only_and_a_mutation_does_not_touch_the_draft():
 
     assert "已开始" in opened
     assert "已开始" in listed
-    assert "<input" not in opened
+    assert "<input" not in opened.split("</nav>", 1)[-1]
     assert 'value="save"' not in opened
     assert 'value="publish"' not in opened
     assert 'value="delete"' in opened

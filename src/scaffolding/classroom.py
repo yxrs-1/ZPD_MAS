@@ -6,7 +6,7 @@ import threading
 import time
 from dataclasses import dataclass, replace
 from html import escape
-from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
+from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit
 
 import scaffolding.store as store
 from scaffolding.class_page import class_asset, class_response, missing_task_page
@@ -28,6 +28,7 @@ from scaffolding.student_page import response_for as student_response_for
 from scaffolding.teacher_page import PageResponse
 from scaffolding.teacher_page import TeacherPage
 from scaffolding.teacher_page import response_for as teacher_response_for
+from scaffolding.teacher_page import teacher_shell
 
 
 class _EmptyExtractor:
@@ -113,18 +114,24 @@ def _dispatch_response(
     uploads=None,
     filenames=None,
 ):
-    raw_path = urlsplit(path).path
+    split = urlsplit(path)
+    raw_path = split.path
+    forgot = dict(parse_qsl(split.query)).get("forgot") == "1"
     parts = [part for part in raw_path.split("/") if part]
-    if parts == []:
-        return _html(_document("<h1>课堂</h1><a href=\"/teacher\">教师</a><a href=\"/student\">学生</a>"))
+    if parts == [] or (parts == ["login"] and method != "POST"):
+        return _html(entrance_page("学生", forgot=forgot))
+    if parts == ["login"] and method == "POST":
+        return _role_login(room, body, now)
     if parts[0] not in ("teacher", "student"):
         return _html(_document("<h1>页面不存在</h1>"), 404)
     rest = raw_path[len("/" + parts[0]):] or "/"
     if not rest.startswith("/"):
         rest = "/" + rest
     if parts[0] == "teacher":
-        return _teacher_response(room, method, parts, rest, body, headers, uploads, filenames)
-    return _student_response(room, method, parts, rest, body, now, headers)
+        return _teacher_response(
+            room, method, parts, rest, body, headers, uploads, filenames, forgot
+        )
+    return _student_response(room, method, parts, rest, body, now, headers, forgot)
 
 
 def _student_visible(room: Classroom, task_id: str) -> bool:
@@ -135,8 +142,20 @@ def _student_visible(room: Classroom, task_id: str) -> bool:
     return task.published
 
 
-def _document(body: str) -> str:
-    return "<!DOCTYPE html><html lang=\"zh\"><body>" + body + "</body></html>"
+def _document(body: str, entrance: bool = False) -> str:
+    body_tag = "<body class=\"entrance\">" if entrance else "<body>"
+    return (
+        "<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<link rel=\"stylesheet\" href=\"/static/classroom.css?v=8\"></head>"
+        + body_tag
+        + body + "</body></html>"
+    )
+
+
+def _logged_in_class_missing(room: Classroom, title: str) -> str:
+    body = teacher_shell("<h1>" + title + "</h1>", "/teacher", "班级", room.roster.teacher_account)
+    return _document(body + "<script src=\"/static/teacher.js\"></script>")
 
 
 @dataclass(frozen=True)
@@ -157,16 +176,73 @@ def _download(content: bytes, status: int = 200, filename: str = "") -> _Downloa
 
 
 def _login_page(action: str, message: str = "") -> str:
-    body = "<h1>登录</h1>"
-    if message:
-        body += "<p>" + escape(message) + "</p>"
-    body += (
-        "<form method=\"post\" action=\"" + action + "\">"
-        + "<input name=\"account\">"
-        + "<input name=\"password\">"
-        + "<button type=\"submit\">登录</button></form>"
+    role = "教师" if action.startswith("/teacher") else "学生"
+    return entrance_page(role, message)
+
+
+def _characters() -> str:
+    def eyes(kind: str) -> str:
+        mark = "eyeball" if kind == "ball" else "dot"
+        return (
+            '<div class="face"><span class="' + mark + '"><i></i></span>'
+            '<span class="' + mark + '"><i></i></span></div>'
+        )
+
+    return (
+        '<div class="characters"><img class="logo" src="/static/logo.png?v=3" alt="zpd_MAS">'
+        '<div class="cast" aria-hidden="true">'
+        '<div class="person purple">' + eyes("ball") + "</div>"
+        '<div class="person black">' + eyes("ball") + "</div>"
+        '<div class="person orange">' + eyes("dot") + "</div>"
+        '<div class="person yellow">' + eyes("dot") + '<span class="mouth"></span></div>'
+        "</div></div>"
     )
-    return _document(body)
+
+
+def _account_field() -> str:
+    return '<label class="field">账号<input name="account"></label>'
+
+
+def _password_field() -> str:
+    return (
+        '<label class="field">密码<span class="secret">'
+        '<input name="password" type="password">'
+        '<button type="button">显示</button></span></label>'
+    )
+
+
+def entrance_page(role: str, message: str = "", forgot: bool = False) -> str:
+    teacher = role == "教师"
+    selected_teacher = " selected" if teacher else ""
+    selected_student = "" if teacher else " selected"
+    notice = ""
+    if message:
+        notice = '<p class="notice">' + escape(message) + "</p>"
+    extra = ""
+    if not teacher:
+        if forgot:
+            extra += "<p class=\"notice\">请教师重置密码</p>"
+        extra += (
+            '<p class="links"><a href="/student/register">注册账号</a>'
+            '<a href="?forgot=1">忘记密码</a></p>'
+        )
+    body = (
+        '<div class="entrance">' + _characters()
+        + '<div class="panel"><h1>登录</h1>'
+        + '<p class="sub">请填写账号和密码</p>'
+        + notice
+        + '<form method="post" action="/login">'
+        + '<label class="field">身份<select name="role">'
+        + '<option value="学生"' + selected_student + ">学生</option>"
+        + '<option value="教师"' + selected_teacher + ">教师</option>"
+        + "</select></label>"
+        + _account_field()
+        + _password_field()
+        + '<button type="submit">登录</button></form>'
+        + extra
+        + '</div></div><script src="/static/entrance.js?v=5"></script>'
+    )
+    return _document(body, entrance=True)
 
 
 def _cookie_value(headers: str, name: str) -> str:
@@ -185,6 +261,30 @@ def _set_cookie(name: str, token: str, path: str) -> str:
 
 def _clear_cookie(name: str, path: str) -> str:
     return name + "=; Max-Age=0; Path=" + path
+
+
+def _role_login(room: Classroom, body: str, now: float):
+    fields = parse_qs(body, keep_blank_values=True)
+    role = fields.get("role", [""])[-1]
+    account = fields.get("account", [""])[-1]
+    password = fields.get("password", [""])[-1]
+    if role == "教师":
+        if not room.roster.authenticate_teacher(account, password):
+            return _html(entrance_page("教师", "账号或密码不正确"))
+        token = secrets.token_hex(16)
+        room.teacher_tokens.add(token)
+        response = teacher_response_for(room.teacher, "GET", "/", "")
+        return replace(response, set_cookie=_set_cookie("teacher", token, "/teacher"))
+    if role == "学生":
+        student = room.roster.authenticate_student(account, password)
+        if student is None:
+            return _html(entrance_page("学生", "账号或密码不正确"))
+        token = secrets.token_hex(16)
+        room.student_tokens[token] = student.account
+        student_page = _student_page(room, student.account, student.class_id)
+        response = student_response_for(student_page, "GET", "/", "", now)
+        return replace(response, set_cookie=_set_cookie("student", token, "/student"))
+    return _html(entrance_page("学生", "账号或密码不正确"))
 
 
 def _teacher_login(room: Classroom, body: str):
@@ -258,7 +358,7 @@ def _rerender_teacher(room: Classroom, path: str, headers: str):
         return None
     token = _cookie_value(headers, "teacher")
     if token not in room.teacher_tokens:
-        return _html(_login_page("/teacher/login"))
+        return _html(entrance_page("教师"))
     rest = raw_path[len("/teacher"):] or "/"
     if not rest.startswith("/"):
         rest = "/" + rest
@@ -266,7 +366,7 @@ def _rerender_teacher(room: Classroom, path: str, headers: str):
         html = class_response(room, "GET", rest, {}, {})
         if html == "":
             title = "学生不存在" if len(parts) >= 4 and parts[3] == "students" else "班级不存在"
-            return _html(_document("<h1>" + title + "</h1>"), 404)
+            return _html(_logged_in_class_missing(room, title), 404)
         return _html(html)
     return teacher_response_for(room.teacher, "GET", rest, "")
 
@@ -279,7 +379,7 @@ def _rerender_student(room: Classroom, path: str, headers: str, now: float):
     token = _cookie_value(headers, "student")
     account = room.student_tokens.get(token)
     if account is None:
-        return _html(_login_page("/student/login"))
+        return _html(entrance_page("学生"))
     student_page = _student_page(room, account, _class_of(room, account))
     if len(parts) >= 3 and parts[1] == "tasks":
         task_id = unquote(parts[2])
@@ -511,12 +611,13 @@ def _teacher_response(
     headers: str,
     uploads=None,
     filenames=None,
+    forgot: bool = False,
 ):
     if len(parts) >= 2 and parts[1] == "login" and method == "POST":
         return _teacher_login(room, body)
     token = _cookie_value(headers, "teacher")
     if token not in room.teacher_tokens:
-        return _html(_login_page("/teacher/login"))
+        return _html(entrance_page("教师", forgot=forgot))
     if len(parts) >= 2 and parts[1] == "classes":
         if method == "GET" and _is_class_asset(parts):
             found = class_asset(room, rest)
@@ -548,8 +649,8 @@ def _teacher_response(
         html = class_response(room, method, rest, fields, uploads or {})
         if html == "":
             title = "学生不存在" if len(parts) >= 4 and parts[3] == "students" else "班级不存在"
-            return _html(_document("<h1>" + title + "</h1>"), 404)
-        status = 404 if html == missing_task_page() else 200
+            return _html(_logged_in_class_missing(room, title), 404)
+        status = 404 if html == missing_task_page(room) else 200
         return _html(html, status)
     if method == "POST" and len(parts) == 1:
         fields = parse_qs(body, keep_blank_values=True)
@@ -589,13 +690,69 @@ def _is_class_asset(parts: list) -> bool:
     return len(parts) == 11 and parts[7] == "turns" and parts[9] == "assets"
 
 
-def _student_response(room: Classroom, method: str, parts: list, rest: str, body: str, now: float, headers: str):
+def register_page(room, message: str = "") -> str:
+    notice = '<p class="notice">' + escape(message) + "</p>" if message else ""
+    if not room.roster.classes():
+        notice = '<p class="notice">先由教师创建班级</p>'
+    options = '<option value="">选择班级</option>'
+    for item in room.roster.classes():
+        options += '<option value="' + escape(item.class_id) + '">' + escape(item.name) + "</option>"
+    body = (
+        '<div class="entrance">' + _characters()
+        + '<div class="panel"><h1>注册</h1>'
+        + '<p class="sub">加入教师已经建好的班级</p>'
+        + notice
+        + '<form method="post" action="/student/register">'
+        + _account_field()
+        + _password_field()
+        + '<label class="field">姓名<input name="name"></label>'
+        + '<label class="field">班级<select name="class_id">'
+        + options
+        + '</select></label><button type="submit">注册</button></form>'
+        + '</div></div><script src="/static/entrance.js?v=5"></script>'
+    )
+    return _document(body, entrance=True)
+
+
+def _register_student(room, body: str, now: float):
+    if not room.roster.classes():
+        return _html(register_page(room))
+    fields = parse_qs(body, keep_blank_values=True)
+    try:
+        student = room.roster.register_student(
+            fields.get("class_id", [""])[-1],
+            fields.get("account", [""])[-1],
+            fields.get("password", [""])[-1],
+            fields.get("name", [""])[-1],
+        )
+    except RosterError as error:
+        return _html(register_page(room, str(error)))
+    token = secrets.token_hex(16)
+    room.student_tokens[token] = student.account
+    student_page = _student_page(room, student.account, student.class_id)
+    response = student_response_for(student_page, "GET", "/", "", now)
+    return replace(response, set_cookie=_set_cookie("student", token, "/student"))
+
+
+def _student_response(
+    room: Classroom, method: str, parts: list, rest: str, body: str, now: float, headers: str,
+    forgot: bool = False,
+):
     if len(parts) >= 2 and parts[1] == "login" and method == "POST":
         return _student_login(room, body, now)
+    if parts == ["student", "register"]:
+        token = _cookie_value(headers, "student")
+        account = room.student_tokens.get(token)
+        if account is not None:
+            student_page = _student_page(room, account, _class_of(room, account))
+            return student_response_for(student_page, "GET", "/", "", now)
+        if method == "POST":
+            return _register_student(room, body, now)
+        return _html(register_page(room))
     token = _cookie_value(headers, "student")
     account = room.student_tokens.get(token)
     if account is None:
-        return _html(_login_page("/student/login"))
+        return _html(entrance_page("学生", forgot=forgot))
     student_page = _student_page(room, account, _class_of(room, account))
     if method == "POST" and len(parts) == 1:
         fields = parse_qs(body, keep_blank_values=True)
@@ -613,7 +770,10 @@ def production_classroom(*, post, api_key=None) -> Classroom:
     knowledge = KnowledgeBase()
 
     def complete(messages):
-        return deepseek_complete(messages, post=post, api_key=api_key)
+        return outside_lock(
+            getattr(complete, "lock", None),
+            lambda: deepseek_complete(messages, post=post, api_key=api_key),
+        )
 
     objectives = ObjectiveCatalog(knowledge, ModelObjectiveExtractor(complete))
     generation = TaskGeneration(
@@ -622,7 +782,7 @@ def production_classroom(*, post, api_key=None) -> Classroom:
         ModelQuestionGenerator(complete),
         ModelTextGenerator(complete),
     )
-    return Classroom(
+    room = Classroom(
         catalog,
         ModelDecisionAgent(complete),
         ModelScaffoldAgent(complete),
@@ -632,50 +792,42 @@ def production_classroom(*, post, api_key=None) -> Classroom:
         path=os.path.abspath("classroom.json"),
         complete=complete,
     )
+    complete.lock = room._lock
+    return room
+
+
+def classroom_url() -> str | None:
+    raw = os.environ.get("CLASSROOM_URL")
+    if raw is None:
+        return None
+    text = raw.strip()
+    if not text.startswith("https://"):
+        return None
+    return text
+
+
+def listen_host() -> str:
+    if classroom_url() is None:
+        return "127.0.0.1"
+    return "0.0.0.0"
+
+
+def outside_lock(lock, call):
+    if lock is not None and lock._is_owned():
+        lock.release()
+        try:
+            return call()
+        finally:
+            lock.acquire()
+    return call()
 
 
 def serve(room: Classroom, port: int) -> None:
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import uvicorn
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            self._respond()
+    from scaffolding.web import create_app
 
-        def do_POST(self) -> None:
-            self._respond()
-
-        def _respond(self) -> None:
-            length = int(self.headers.get("Content-Length", "0") or "0")
-            raw_bytes = self.rfile.read(length)
-            content_type = self.headers.get("Content-Type", "") or ""
-            uploads = None
-            filenames = None
-            if "multipart/form-data" in content_type.lower():
-                uploads = files_from_body(content_type, raw_bytes)
-                filenames = filenames_from_body(content_type, raw_bytes)
-                raw = _fields_from_multipart(content_type, raw_bytes)
-            else:
-                raw = raw_bytes.decode("utf-8")
-            headers = self.headers.get("Cookie", "")
-            response = response_for(
-                room, self.command, self.path, raw, time.monotonic(), headers, uploads, filenames
-            )
-            self.send_response(response.status)
-            self.send_header("Content-Type", response.content_type)
-            filename = getattr(response, "filename", "")
-            if filename:
-                encoded = quote(filename, safe="")
-                self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + encoded)
-            if response.set_cookie:
-                self.send_header("Set-Cookie", response.set_cookie)
-            self.send_header("Content-Length", str(len(response.body)))
-            self.end_headers()
-            self.wfile.write(response.body)
-
-        def log_message(self, *args) -> None:
-            return
-
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    uvicorn.run(create_app(room), host=listen_host(), port=port, log_config=None)
 
 
 def _port(argv: list[str]) -> int | None:
@@ -702,7 +854,7 @@ def main(argv: list[str] | None = None) -> int:
     if port is None:
         print("端口不正确", file=sys.stderr)
         return 1
-    print("http://127.0.0.1:" + str(port), flush=True)
+    print(classroom_url() or ("http://127.0.0.1:" + str(port)), flush=True)
     room = production_classroom(post=post_json)
     serve(room, port)
     return 0
