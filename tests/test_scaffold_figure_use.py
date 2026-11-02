@@ -68,3 +68,22 @@ def test_example_prompt_uses_the_shot_list():
     assert "思维导图例如：\n网络\n  带宽\n  延迟" in user["content"]
     assert "结构图例如：\n节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同" in user["content"]
 
+
+CHAIN = "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n拍：带宽：5：先看带宽\n拍：带宽 -> 延迟：5：再看延迟\n"
+
+
+def test_a_rejected_animation_redraws_a_readable_example():
+    examples = {"微格动画": (CHAIN, b"<svg>old</svg>")}
+    asset = figure_asset("微格动画", "帧：带宽\n", examples)
+
+    assert asset is not None
+    assert asset.content != b"<svg>old</svg>"
+    assert "带宽" in asset.content.decode()
+    assert 'dur="10s"' in asset.content.decode()
+
+
+def test_an_unreadable_animation_example_draws_nothing():
+    examples = {"微格动画": ("帧：甲\n", b"<svg>old</svg>")}
+
+    assert figure_asset("微格动画", "节点：带宽\n", examples) is None
+

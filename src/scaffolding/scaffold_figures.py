@@ -26,7 +26,13 @@ def figure_asset(kind: str, source: str, examples: dict) -> Asset | None:
         saved = examples.get(kind)
         if saved is None:
             return None
-        content = saved[1]
+        if kind == "微格动画":
+            try:
+                content = render_svg(kind, saved[0])
+            except FigureRejected:
+                return None
+        else:
+            content = saved[1]
     return Asset(AssetKind(kind), kind + ".svg", content)
 
 

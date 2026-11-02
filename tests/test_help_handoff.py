@@ -55,3 +55,31 @@ def test_behavior_is_not_given_to_the_scaffold_agent():
     call = scaffold_agent.calls[0]
     assert "42" not in repr(call["answers"])
     assert "更早的问题" not in repr(call)
+
+
+def test_an_old_animation_example_is_left_out():
+    agent = ScriptedScaffoldAgent(ScaffoldDraft(text="先看下面这张图。", source="帧：甲\n"))
+    session, _decision = _session(agent)
+    session.examples = {"微格动画": ("帧：甲\n", b"<svg>old</svg>")}
+
+    view = session.ask("这一步要判断什么？", HelpSource.PRESET)
+
+    assert agent.example_sources == [""]
+    assert view.scaffold is not None
+    assert view.scaffold.assets == ()
+    assert view.scaffold.text == "先看下面这张图。"
+
+
+def test_a_readable_animation_example_is_attached_and_redrawn():
+    chain = "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n拍：带宽：5：先看带宽\n拍：带宽 -> 延迟：5：再看延迟\n"
+    agent = ScriptedScaffoldAgent(ScaffoldDraft(text="先看下面这张图。", source="帧：甲\n"))
+    session, _decision = _session(agent)
+    session.examples = {"微格动画": (chain, b"<svg>old</svg>")}
+
+    view = session.ask("这一步要判断什么？", HelpSource.PRESET)
+
+    assert agent.example_sources == [chain]
+    assert view.scaffold is not None
+    assert len(view.scaffold.assets) == 1
+    assert view.scaffold.assets[0].content != b"<svg>old</svg>"
+    assert "带宽" in view.scaffold.assets[0].content.decode()
