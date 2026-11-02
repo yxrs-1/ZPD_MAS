@@ -29,6 +29,7 @@ class ScriptedScaffoldAgent:
         self.draft = draft if draft is not None else ScaffoldDraft()
         self.error = error
         self.calls: list[dict[str, object]] = []
+        self.example_sources: list[str] = []
 
     def produce(self, scaffold_type: str, question: str, questions: tuple, answers: tuple, example_source: str = "") -> ScaffoldDraft:
         self.calls.append(
@@ -39,6 +40,7 @@ class ScriptedScaffoldAgent:
                 "answers": answers,
             }
         )
+        self.example_sources.append(example_source)
         if self.error is not None:
             raise self.error
         return self.draft

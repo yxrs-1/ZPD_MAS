@@ -110,3 +110,16 @@ def test_an_empty_selection_trace_is_a_blank_line():
     assert user["content"].endswith(
         "修改痕迹：\n\n\n素材：思维导图\n源码是缩进大纲。第一行是根，下一层多两个空格。\n例如：\n网络\n  带宽\n  延迟\n文字的第一句是：先看下面这张图。\n支架类型：提示\n这次提问：还缺什么？"
     )
+
+
+def test_a_demonstration_prompt_uses_the_shot_list():
+    _system, user = build_messages("示范", "循环怎么走？", _questions(), _answers())
+
+    assert "帧：带宽" not in user["content"]
+    assert "停留写成「拍：节点：秒数：说明」。" in user["content"]
+    assert "移动写成「拍：起点 -> 终点：秒数：说明」。" in user["content"]
+    assert "终点比起点更早出现的箭头是回头边，每一条回头边都要走一次。" in user["content"]
+    assert "例子只示范写法。节点、箭头和说明对着这次提问写。" in user["content"]
+    assert "拍：执行循环体 -> 判断条件：2：执行完回到判断" in user["content"]
+    assert "文字的第一句是：先看下面这张图。" in user["content"]
+

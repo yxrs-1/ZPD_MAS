@@ -3,6 +3,7 @@ from dataclasses import dataclass, replace
 from scaffolding.agents import DecisionAgent, ScaffoldAgent, ScaffoldDraft
 from scaffolding.html_assets import assets_from_html, safe_filename
 from scaffolding.model_scaffold import begin_scaffold_progress, end_scaffold_progress
+from scaffolding.figures import FigureRejected, render_svg
 from scaffolding.scaffold_figures import figure_asset, kind_for
 from scaffolding.records import (
     ASSET_KIND_VALUES,
@@ -144,6 +145,11 @@ class Session:
         example_source = ""
         if kind is not None and kind in self.examples:
             example_source = self.examples[kind][0]
+            if kind == "微格动画":
+                try:
+                    render_svg(kind, example_source)
+                except FigureRejected:
+                    example_source = ""
         token = None
         if on_text is not None or on_kind is not None:
             token = begin_scaffold_progress(on_text)
