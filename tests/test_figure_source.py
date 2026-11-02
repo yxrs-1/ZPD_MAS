@@ -93,6 +93,20 @@ def test_a_chain_moves_along_a_straight_line():
     assert svg.count('y="118"') == 2
 
 
+def test_a_hold_stays_on_its_node_after_a_move():
+    source = (
+        "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n"
+        "拍：带宽 -> 延迟：5：先走过去\n拍：带宽：5：回到起点\n"
+    )
+    svg = render_svg("微格动画", source).decode()
+    xs, x_values = _series(svg, "cx")
+    ys, y_values = _series(svg, "cy")
+    assert x_values[xs.index("0.501")] == "110"
+    assert y_values[ys.index("0.501")] == "64"
+    assert x_values[xs.index("1")] == "110"
+    assert y_values[ys.index("1")] == "64"
+
+
 def test_a_node_may_contain_the_voice_words():
     source = "节点：学生\n节点：作业\n箭头：学生 -> 作业：完成\n拍：学生：5：先看这里\n拍：学生 -> 作业：5：再看那里\n"
     svg = render_svg("微格动画", source).decode()
@@ -114,6 +128,8 @@ def test_a_node_may_contain_the_voice_words():
     "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n拍：带宽：5：\n拍：带宽 -> 延迟：5：再看延迟\n",
     "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n拍：带宽：5：一二三四五六七八九十一二三四五六七八九十一\n拍：带宽 -> 延迟：5：再看延迟\n",
     "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n拍：带宽：5：引导学生\n拍：带宽 -> 延迟：5：再看延迟\n",
+    "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n拍：带宽：5：带宽->延迟\n拍：带宽 -> 延迟：5：再看延迟\n",
+    "节点：带宽\n节点：延迟\n箭头：带宽 -> 延迟：不同\n拍：带宽：١：先看带宽\n拍：带宽 -> 延迟：5：再看延迟\n",
     "节点：甲\n节点：乙\n箭头：甲 -> 乙：去\n箭头：乙 -> 甲：回\n拍：甲：5：停在甲\n拍：甲 -> 乙：5：走向乙\n",
     "节点：甲\n节点：乙\n箭头：甲 -> 乙：去\n拍：甲：5：停在甲\n拍：乙：5：停在乙\n",
     "节点：甲\n节点：乙\n箭头：甲 -> 乙：去\n箭头：甲 -> 乙：再\n拍：甲：5：停在甲\n拍：甲 -> 乙：5：走向乙\n",

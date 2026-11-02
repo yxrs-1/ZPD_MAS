@@ -137,6 +137,8 @@ def _beat(body: str, nodes: list[str], edges: list[tuple[str, str, str]]) -> tup
         if body.count("->") != 1 or body.count("：") != 2:
             raise FigureRejected("beat")
         route, duration, caption = body.split("：")
+        if "->" not in route:
+            raise FigureRejected("beat")
         start, end = (part.strip() for part in route.split("->"))
         if not any(item[0] == start and item[1] == end for item in edges):
             raise FigureRejected("beat")
@@ -158,11 +160,21 @@ def _tenths(token: str) -> int:
             raise FigureRejected("duration")
         if whole != "0" and whole.startswith("0"):
             raise FigureRejected("duration")
-        value = int(whole) * 10 + int(frac)
+        try:
+            value = int(whole) * 10 + int(frac)
+        except ValueError:
+            raise FigureRejected("duration")
+        if not whole.isascii() or not frac.isascii():
+            raise FigureRejected("duration")
     elif not token.isdigit() or (len(token) > 1 and token.startswith("0")):
         raise FigureRejected("duration")
     else:
-        value = int(token) * 10
+        try:
+            value = int(token) * 10
+        except ValueError:
+            raise FigureRejected("duration")
+        if not token.isascii():
+            raise FigureRejected("duration")
     if value < 5:
         raise FigureRejected("duration")
     return value
@@ -277,6 +289,13 @@ def _token_frames(beats: list[tuple], centers: dict[str, tuple[float, float]], i
         tenths = beat[-2]
         if beat[0] == "move":
             start, end = centers[beat[1]], centers[beat[2]]
+            origin_point = start
+        else:
+            origin_point = centers[beat[1]]
+        previous = frames[-1]
+        if (previous[1], previous[2]) != origin_point:
+            frames.append((previous[0] + 0.1, origin_point[0], origin_point[1]))
+        if beat[0] == "move":
             if indexes[beat[2]] < indexes[beat[1]]:
                 control = ((start[0] + end[0]) / 2, min(start[1], end[1]) - 72)
                 for amount in (0.25, 0.5, 0.75):
@@ -291,8 +310,7 @@ def _token_frames(beats: list[tuple], centers: dict[str, tuple[float, float]], i
                 frames.append((cursor + tenths / 2, mid[0], mid[1]))
             frames.append((cursor + tenths, end[0], end[1]))
         else:
-            point = centers[beat[1]]
-            frames.append((cursor + tenths, point[0], point[1]))
+            frames.append((cursor + tenths, origin_point[0], origin_point[1]))
         cursor += tenths
     return frames
 
