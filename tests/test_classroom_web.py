@@ -2,7 +2,8 @@ import threading
 import time
 
 from scaffolding.classroom import listen_host, main, outside_lock
-from scaffolding.model_generator import deepseek_complete, model_limit
+from scaffolding.generation import Rejected
+from scaffolding.model_generator import deepseek_complete
 from tests.classroom_helpers import room
 from tests.test_classroom_launch import _block
 
@@ -29,21 +30,49 @@ def test_a_url_without_https_stays_on_this_computer(monkeypatch, capsys):
     assert listen_host() == "127.0.0.1"
 
 
-def test_model_limit_is_16_unless_a_whole_number_is_set(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_CONCURRENCY", raising=False)
-    assert model_limit() == 16
-    monkeypatch.setenv("DEEPSEEK_CONCURRENCY", "  ")
-    assert model_limit() == 16
-    monkeypatch.setenv("DEEPSEEK_CONCURRENCY", "0")
-    assert model_limit() == 16
-    monkeypatch.setenv("DEEPSEEK_CONCURRENCY", "no")
-    assert model_limit() == 16
-    monkeypatch.setenv("DEEPSEEK_CONCURRENCY", "8")
-    assert model_limit() == 8
-
-
-def test_a_model_call_lets_other_students_save(monkeypatch):
+def test_model_calls_go_out_together_and_a_limit_stays_on_that_call(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_CONCURRENCY", "1")
+    state = {"inside": 0, "max": 0}
+    guard = threading.Lock()
+    started = threading.Barrier(2)
+    results = {}
+
+    def post(url, headers, payload):
+        with guard:
+            state["inside"] += 1
+            state["max"] = max(state["max"], state["inside"])
+        started.wait(timeout=1)
+        time.sleep(0.05)
+        with guard:
+            state["inside"] -= 1
+        if payload["messages"][0]["content"] == "限流":
+            return 429, {"error": "rate limit"}
+        return 200, {"choices": [{"message": {"content": "题目"}}]}
+
+    def run(name, content):
+        try:
+            results[name] = deepseek_complete(
+                [{"role": "user", "content": content}],
+                post=post,
+                api_key="k",
+            )
+        except Rejected as error:
+            results[name] = error
+
+    threads = [
+        threading.Thread(target=run, args=("ok", "出题")),
+        threading.Thread(target=run, args=("limited", "限流")),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert state["max"] == 2
+    assert results["ok"] == "题目"
+    assert isinstance(results["limited"], Rejected)
+
+
+def test_a_model_call_lets_other_students_save():
     lock = threading.RLock()
     lock.acquire()
     saved = []
@@ -62,35 +91,6 @@ def test_a_model_call_lets_other_students_save(monkeypatch):
     outside_lock(lock, call_model)
     lock.release()
     assert saved == [True]
-
-
-def test_one_model_slot_does_not_overlap(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_CONCURRENCY", "1")
-    state = {"inside": 0, "max": 0}
-    guard = threading.Lock()
-
-    def post(url, headers, payload):
-        with guard:
-            state["inside"] += 1
-            state["max"] = max(state["max"], state["inside"])
-        time.sleep(0.05)
-        with guard:
-            state["inside"] -= 1
-        return 200, {"choices": [{"message": {"content": "ok"}}]}
-
-    threads = [
-        threading.Thread(
-            target=deepseek_complete,
-            args=([{"role": "user", "content": "题"}],),
-            kwargs={"post": post, "api_key": "k"},
-        )
-        for _ in range(2)
-    ]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-    assert state["max"] == 1
 
 
 def test_the_web_app_serves_the_classroom_home():

@@ -4,6 +4,7 @@ import sys
 import secrets
 import threading
 import time
+import urllib.request
 from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit
@@ -16,7 +17,8 @@ from scaffolding.generation import TaskGeneration
 from scaffolding.knowledge import KnowledgeBase
 from scaffolding.model_decision import ModelDecisionAgent
 from scaffolding.model_extractor import ModelObjectiveExtractor
-from scaffolding.model_generator import ModelQuestionGenerator, deepseek_complete, post_json
+from scaffolding.model_generator import ModelQuestionGenerator, deepseek_complete, deepseek_stream, post_json
+from scaffolding.model_scaffold import scaffold_listening
 from scaffolding.model_text import ModelTextGenerator
 from scaffolding.model_scaffold import ModelScaffoldAgent
 from scaffolding.objectives import ObjectiveCatalog
@@ -48,6 +50,8 @@ class Classroom:
         *,
         path=None,
         complete=None,
+        records=None,
+        sessions=None,
     ) -> None:
         self._lock = threading.RLock()
         self.catalog = catalog
@@ -60,8 +64,12 @@ class Classroom:
         self.generation = generation
         self.roster = Roster()
         self.classwork = Classwork(self.roster)
-        self.teacher_tokens = set()
-        self.student_tokens = {}
+        if sessions is None:
+            self.teacher_tokens = set()
+            self.student_tokens = {}
+        else:
+            self.teacher_tokens = sessions.teachers
+            self.student_tokens = sessions.students
         self.student_pages = {}
         self.documents = DocumentLibrary()
         self.teacher = TeacherPage(
@@ -76,9 +84,12 @@ class Classroom:
             complete=complete,
         )
         self.student = StudentPage(catalog, decision, scaffold_agent, prefix="/student")
-        self.path = None if path is None else os.fspath(path)
+        self.records = records
+        self.path = None if path is None or records is not None else os.fspath(path)
         self.saved_sessions = {}
-        if self.path is not None:
+        if self.records is not None:
+            self.records.open(self)
+        elif self.path is not None:
             if os.path.isfile(self.path):
                 store.load_classroom(self.path, self)
             else:
@@ -96,7 +107,7 @@ def response_for(
     filenames=None,
 ):
     with room._lock:
-        tracking = room.path is not None
+        tracking = room.path is not None or room.records is not None
         before = store.classroom_state(room) if tracking else None
         response = _dispatch_response(room, method, path, body, now, headers, uploads, filenames)
         if before is not None and store.classroom_state(room) != before:
@@ -147,7 +158,7 @@ def _document(body: str, entrance: bool = False) -> str:
     return (
         "<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        "<link rel=\"stylesheet\" href=\"/static/classroom.css?v=8\"></head>"
+        "<link rel=\"stylesheet\" href=\"/static/classroom.css?v=14\"></head>"
         + body_tag
         + body + "</body></html>"
     )
@@ -317,6 +328,7 @@ def _student_page(room: Classroom, account: str, class_id: str) -> StudentPage:
             prefix="/student",
             show_logout=True,
         )
+        page.example_loader = getattr(room, "example_loader", lambda task_id: {})
         _restore_saved_sessions(room, page, account)
         room.student_pages[account] = page
     room.student = page
@@ -341,9 +353,20 @@ def _restore_saved_sessions(room: Classroom, page, account: str) -> None:
 
 def _commit(room: Classroom, response, path: str, headers: str, now: float):
     try:
-        store.save_classroom(room.path, room)
+        if room.records is not None:
+            try:
+                room.records.save(room)
+            except OSError:
+                raise
+            except Exception as error:
+                raise OSError("课堂记录没有写入数据库") from error
+        else:
+            store.save_classroom(room.path, room)
     except OSError:
-        store.load_classroom(room.path, room)
+        if room.records is not None:
+            room.records.load(room)
+        else:
+            store.load_classroom(room.path, room)
         fresh = _rerender_teacher(room, path, headers)
         if fresh is None:
             fresh = _rerender_student(room, path, headers, now)
@@ -765,15 +788,17 @@ def _student_response(
     return student_response_for(student_page, method, rest, body, now)
 
 
-def production_classroom(*, post, api_key=None) -> Classroom:
+def production_classroom(*, post, api_key=None, records=None, sessions=None) -> Classroom:
     catalog = TaskCatalog()
     knowledge = KnowledgeBase()
 
     def complete(messages):
-        return outside_lock(
-            getattr(complete, "lock", None),
-            lambda: deepseek_complete(messages, post=post, api_key=api_key),
-        )
+        def run():
+            if scaffold_listening():
+                return deepseek_stream(messages, opener=urllib.request.urlopen, api_key=api_key)
+            return deepseek_complete(messages, post=post, api_key=api_key)
+
+        return outside_lock(getattr(complete, "lock", None), run)
 
     objectives = ObjectiveCatalog(knowledge, ModelObjectiveExtractor(complete))
     generation = TaskGeneration(
@@ -789,8 +814,10 @@ def production_classroom(*, post, api_key=None) -> Classroom:
         knowledge,
         objectives,
         generation,
-        path=os.path.abspath("classroom.json"),
+        path=None if records is not None else os.path.abspath("classroom.json"),
         complete=complete,
+        records=records,
+        sessions=sessions,
     )
     complete.lock = room._lock
     return room

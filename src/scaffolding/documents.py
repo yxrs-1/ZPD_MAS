@@ -6,6 +6,8 @@ from xml.etree import ElementTree
 
 from pypdf import PdfReader
 
+from scaffolding.model_trace import inside_model_call, remember_model_result, tracing_model_call
+
 
 class DocumentError(Exception):
     def __init__(self, message: str) -> None:
@@ -99,6 +101,8 @@ class StoredDocument:
     doc_id: str
     name: str
     chunks: tuple[str, ...]
+    status: str = ""
+    detail: str = ""
 
 
 class DocumentLibrary:
@@ -183,7 +187,7 @@ _OBJECTIVE_SYSTEM = (
 )
 
 
-def draft_objectives(complete, documents: tuple[StoredDocument, ...], demand: str) -> tuple[DraftedObjective, ...]:
+def draft_objectives(complete, documents: tuple[StoredDocument, ...], demand: str, retrieve=None) -> tuple[DraftedObjective, ...]:
     stripped = demand.strip()
     if stripped == "":
         raise DraftError("先填写需求")
@@ -194,12 +198,19 @@ def draft_objectives(complete, documents: tuple[StoredDocument, ...], demand: st
     query = _retrieval_query(first)
     if _terms(query) == ():
         raise DraftError("没有写出目标")
-    passages = rank_passages(documents, query)
-    second = _call(complete, (
+    if retrieve is None:
+        passages = rank_passages(documents, query)
+    else:
+        passages = tuple(retrieve(query))
+    second_messages = (
         {"role": "system", "content": _OBJECTIVE_SYSTEM},
         {"role": "user", "content": _second_message(stripped, passages)},
-    ))
-    return _drafted(second)
+    )
+    with tracing_model_call("生成目标") as meta:
+        second = _call(complete, second_messages)
+        drafted = _drafted(second)
+        meta["生成目标"] = format_objectives(drafted)
+        return drafted
 
 
 def format_objectives(items) -> str:
@@ -223,12 +234,26 @@ def parse_objective_text(text: str) -> tuple[DraftedObjective, ...]:
     return tuple(parsed)
 
 
-def confirm_prompt(demand: str, objectives: tuple[DraftedObjective, ...]) -> str:
+def confirm_prompt(demand: str, objectives: tuple[DraftedObjective, ...], passages: tuple[tuple[str, str], ...] = ()) -> str:
     blocks = ["维度：" + item.dimension + "\n表述：" + item.statement for item in objectives]
-    return "教师需求：\n" + demand.strip() + "\n\n目标：\n" + "\n\n".join(blocks)
+    text = "教师需求：\n" + demand.strip() + "\n\n目标：\n" + "\n\n".join(blocks)
+    if passages == ():
+        return text
+    lines = ["匹配片段："]
+    for name, chunk in passages:
+        lines.append("文件名：" + name)
+        lines.append(chunk)
+    return text + "\n\n" + "\n".join(lines)
 
 
 def _call(complete, messages):
+    if inside_model_call():
+        return _finish_call(complete, messages)
+    with tracing_model_call("模型调用"):
+        return _finish_call(complete, messages)
+
+
+def _finish_call(complete, messages):
     try:
         reply = complete(messages)
     except DraftError:
@@ -237,6 +262,7 @@ def _call(complete, messages):
         raise DraftError("没有写出目标") from error
     if not isinstance(reply, str):
         raise DraftError("没有写出目标")
+    remember_model_result(messages, reply)
     return reply
 
 

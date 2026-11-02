@@ -148,6 +148,7 @@ def _apply_tasks(room, data: dict) -> None:
             published=item["published"],
             started=item["started"],
             submitted=item["submitted"],
+            title=item.get("title", ""),
         )
     catalog._next_id = data.get("next_task", _next_number("task-", catalog._tasks))
 
@@ -243,6 +244,7 @@ def _task_data(task: Task) -> dict:
         "published": task.published,
         "started": task.started,
         "submitted": task.submitted,
+        "title": task.title,
         "questions": [_question_data(question) for question in task.questions],
     }
 
@@ -385,11 +387,19 @@ def _turn_data(turn: DialogueTurn) -> dict:
         "question": turn.question,
         "source": turn.source.value,
         "scaffold": _scaffold_data(turn.scaffold),
+        "scaffold_type": turn.scaffold_type,
+        "reason": turn.reason,
     }
 
 
 def _turn(data: dict) -> DialogueTurn:
-    return DialogueTurn(data["question"], HelpSource(data["source"]), _scaffold(data["scaffold"]))
+    return DialogueTurn(
+        data["question"],
+        HelpSource(data["source"]),
+        _scaffold(data["scaffold"]),
+        data.get("scaffold_type", ""),
+        data.get("reason", ""),
+    )
 
 
 def _scaffold_data(scaffold: Scaffold | None):

@@ -57,6 +57,7 @@ class TeacherPage:
         classwork=None,
         library=None,
         complete=None,
+        retrieve=None,
     ) -> None:
         self.catalog = catalog if catalog is not None else TaskCatalog()
         self.drafts = {}
@@ -70,6 +71,7 @@ class TeacherPage:
         self.generation = generation
         self.library = library if library is not None else DocumentLibrary()
         self.complete = complete
+        self.retrieve = retrieve
 
     def list_tasks(self, message: str = "") -> str:
         return _render_list(self, message)
@@ -137,6 +139,14 @@ class TeacherPage:
             except RosterError as error:
                 return _render(self, task_id, str(error))
             return _render(self, task_id)
+        if action == "改名":
+            raw = fields.get("title", [""])
+            title = raw[-1] if isinstance(raw, (list, tuple)) else raw
+            title = str(title).strip()
+            if title == "":
+                return _render(self, task_id, "先填写任务名称")
+            self.catalog.rename(task_id, title)
+            return _render(self, task_id)
         if task.started:
             return _render(self, task_id, "学生已开始，只能删除")
         if action == "abandon":
@@ -164,20 +174,16 @@ def _render_list(page: TeacherPage, message: str = "") -> str:
     for task in page.catalog._tasks.values():
         href = _with_prefix(page.prefix, "/tasks/" + quote(task.task_id, safe=""))
         items.append(
-            "<li><a href=\"" + href + "\">" + escape(task.task_id)
-            + "</a> " + escape(_fact(task)) + "</li>"
+            "<li class=\"task-row\"><a href=\"" + href + "\">" + escape(task.task_id)
+            + "</a><span class=\"badge " + _badge(task) + "\">" + escape(_fact(task)) + "</span></li>"
         )
-    extra = ""
-    if page.roster is not None:
-        extra = "<a href=\"" + _with_prefix(page.prefix, "/classes") + "\">班级</a>"
-    notice = ""
-    if message:
-        notice = "<p>" + escape(message) + "</p>"
+    notice = "<p>" + escape(message) + "</p>" if message else ""
+    rows = "<ul class=\"task-list\">" + "".join(items) + "</ul>" if items else "<p class=\"empty\">还没有任务</p>"
     body = (
-        "<h1>任务列表</h1>" + notice
-        + "<a href=\"" + _with_prefix(page.prefix, "/tasks/new") + "\">新建</a>"
-        + extra
-        + "<ul>" + "".join(items) + "</ul>"
+        "<header class=\"page-head\"><h1>任务列表</h1>"
+        + "<a class=\"action\" href=\"" + _with_prefix(page.prefix, "/tasks/new") + "\">新建</a></header>"
+        + notice
+        + rows
     )
     return _shell_document(page, body, "任务")
 
@@ -188,6 +194,14 @@ def _fact(task) -> str:
     if task.published:
         return "已发布"
     return "未发布"
+
+
+def _badge(task) -> str:
+    if task.started:
+        return "badge-live"
+    if task.published:
+        return "badge-on"
+    return "badge-off"
 
 
 def teacher_shell(body: str, prefix: str, current: str, account: str) -> str:
@@ -220,7 +234,7 @@ def _document(body: str, prefix: str = "", current: str = "任务", account: str
     return (
         "<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        "<link rel=\"stylesheet\" href=\"/static/classroom.css\"></head><body>"
+        "<link rel=\"stylesheet\" href=\"/static/classroom.css?v=14\"></head><body>"
         + wrapped
         + "<script src=\"/static/teacher.js\"></script></body></html>"
     )
@@ -241,7 +255,10 @@ def _html(text: str, status: int = 200) -> PageResponse:
 
 def _render(page: TeacherPage, task_id: str, message: str = "") -> str:
     task = page.catalog.get(task_id)
-    parts = ["<h1>" + escape(task_id) + "</h1><p>" + escape(_fact(task)) + "</p>"]
+    parts = [
+        "<header class=\"page-head\"><h1>" + escape(task_id) + "</h1>"
+        + "<span class=\"badge " + _badge(task) + "\">" + escape(_fact(task)) + "</span></header>"
+    ]
     if message:
         parts.append("<p>" + escape(message) + "</p>")
     if task.started:
@@ -260,6 +277,7 @@ def _render(page: TeacherPage, task_id: str, message: str = "") -> str:
     parts.append("<button type=\"submit\" name=\"action\" value=\"save\" hidden>保存</button>")
     for index, item in enumerate(questions):
         parts.append(_editor(index, item, len(questions)))
+    parts.append("<div class=\"editor-bar\">")
     for kind in KINDS:
         parts.append(
             "<button type=\"submit\" name=\"action\" value=\"add:" + kind
@@ -270,7 +288,7 @@ def _render(page: TeacherPage, task_id: str, message: str = "") -> str:
         parts.append("<button type=\"submit\" name=\"action\" value=\"abandon\">放弃草稿</button>")
     elif task.questions != ():
         parts.append("<button type=\"submit\" name=\"action\" value=\"publish\">发布</button>")
-    parts.append("<button type=\"submit\" name=\"action\" value=\"delete\">删除</button></form>")
+    parts.append("<button type=\"submit\" name=\"action\" value=\"delete\">删除</button></div></form>")
     parts.append(_assignment(page, task_id))
     return _shell_document(page, "".join(parts), "任务")
 
@@ -315,7 +333,7 @@ def _from_question(question) -> DraftQuestion:
 
 def _editor(index: int, item: DraftQuestion, count: int) -> str:
     name = str(index)
-    body = "<section><p>" + escape(item.kind) + "</p>"
+    body = "<section class=\"question\"><p class=\"kind\">" + escape(item.kind) + "</p>"
     body += "<input type=\"hidden\" name=\"kind-" + name + "\" value=\"" + escape(item.kind) + "\">"
     body += "<input type=\"text\" name=\"prompt-" + name + "\" value=\"" + escape(item.prompt) + "\">"
     if item.kind in ("单选", "多选"):
@@ -323,13 +341,14 @@ def _editor(index: int, item: DraftQuestion, count: int) -> str:
         for option_index, option in enumerate(item.options):
             checked = " checked" if option in item.selected else ""
             option_name = name + ":" + str(option_index)
-            body += (
-                "<input type=\"text\" name=\"option-" + name + "-" + str(option_index)
-                + "\" value=\"" + escape(option) + "\">"
-            )
+            body += "<div class=\"option-row\">"
             body += (
                 "<input type=\"" + input_type + "\" name=\"selected-" + name
                 + "\" value=\"" + str(option_index) + "\"" + checked + ">"
+            )
+            body += (
+                "<input type=\"text\" name=\"option-" + name + "-" + str(option_index)
+                + "\" value=\"" + escape(option) + "\">"
             )
             if option_index > 0:
                 body += (
@@ -343,7 +362,7 @@ def _editor(index: int, item: DraftQuestion, count: int) -> str:
                 )
             body += (
                 "<button type=\"submit\" name=\"action\" value=\"delete-option:"
-                + option_name + "\">删除选项</button>"
+                + option_name + "\">删除选项</button></div>"
             )
         for text in item.selected:
             if text not in item.options:
@@ -353,12 +372,14 @@ def _editor(index: int, item: DraftQuestion, count: int) -> str:
                 )
         body += "<button type=\"submit\" name=\"action\" value=\"add-option:" + name + "\">增加选项</button>"
     elif item.kind == "判断":
+        body += "<div class=\"choice-row\">"
         for choice in ("正确", "错误"):
             checked = " checked" if choice in item.selected else ""
             body += (
-                "<input type=\"radio\" name=\"selected-" + name + "\" value=\""
-                + choice + "\"" + checked + ">" + choice
+                "<label><input type=\"radio\" name=\"selected-" + name + "\" value=\""
+                + choice + "\"" + checked + ">" + choice + "</label>"
             )
+        body += "</div>"
     else:
         body += (
             "<input type=\"text\" name=\"requirements-" + name + "\" value=\""
@@ -366,12 +387,13 @@ def _editor(index: int, item: DraftQuestion, count: int) -> str:
         )
         body += "<input type=\"text\" name=\"answer-" + name + "\" value=\"" + escape(item.answer) + "\">"
     body += "<input type=\"text\" name=\"explanation-" + name + "\" value=\"" + escape(item.explanation) + "\">"
+    body += "<div class=\"question-tools\">"
     body += "<button type=\"submit\" name=\"action\" value=\"delete:" + name + "\">删除题目</button>"
     if index > 0:
         body += "<button type=\"submit\" name=\"action\" value=\"up:" + name + "\">上移</button>"
     if index < count - 1:
         body += "<button type=\"submit\" name=\"action\" value=\"down:" + name + "\">下移</button>"
-    return body + "</section>"
+    return body + "</div></section>"
 
 
 def _read_only(question) -> str:
@@ -554,21 +576,31 @@ def _map_choice(draft: tuple, index: int, change) -> tuple:
     return tuple(items)
 
 
+_STATUS = {"queued": "排队中", "ready": "可用", "failed": "失败"}
+
+
 def _render_documents(page, message: str) -> str:
     action = _with_prefix(page.prefix, "/documents")
-    parts = ["<h1>资料库</h1>"]
+    parts = ["<header class=\"page-head\"><h1>资料库</h1></header>"]
     if message:
         parts.append("<p>" + escape(message) + "</p>")
-    for item in page.library.documents():
-        parts.append(
-            "<li>" + escape(item.name)
+    documents = page.library.documents()
+    rows = []
+    for item in documents:
+        rows.append(
+            "<li class=\"task-row\"><span>" + escape(item.name) + "</span>"
+            + _status_text(item)
             + "<form method=\"post\" action=\"" + action + "\">"
             + "<input type=\"hidden\" name=\"action\" value=\"删除\">"
             + "<input type=\"hidden\" name=\"doc_id\" value=\"" + escape(item.doc_id) + "\">"
-            + "<button type=\"submit\">删除</button></form></li>"
+            + "<button class=\"danger\" type=\"submit\">删除</button></form></li>"
         )
+    if rows:
+        parts.append("<ul class=\"task-list\">" + "".join(rows) + "</ul>")
+    if any(getattr(item, "status", "") == "queued" for item in documents):
+        parts.append("<script>setTimeout(function(){location.reload()},3000)</script>")
     parts.append(
-        "<form method=\"post\" action=\"" + action + "\" enctype=\"multipart/form-data\">"
+        "<form class=\"compose\" method=\"post\" action=\"" + action + "\" enctype=\"multipart/form-data\">"
         + "<input type=\"hidden\" name=\"action\" value=\"上传\">"
         + "<input type=\"file\" name=\"file\">"
         + "<button type=\"submit\">上传</button></form>"
@@ -576,9 +608,18 @@ def _render_documents(page, message: str) -> str:
     return _shell_document(page, "".join(parts), "资料库")
 
 
+def _status_text(item) -> str:
+    label = _STATUS.get(getattr(item, "status", ""), "")
+    if label == "":
+        return ""
+    detail = getattr(item, "detail", "")
+    shown = label if detail == "" else label + " " + detail
+    return "<span class=\"badge badge-off\">" + escape(shown) + "</span>"
+
+
 def _render_accounts(page, message: str) -> str:
     action = _with_prefix(page.prefix, "/accounts")
-    parts = ["<h1>账号管理</h1>"]
+    parts = ["<header class=\"page-head\"><h1>账号管理</h1></header>"]
     if message:
         parts.append("<p>" + escape(message) + "</p>")
     if page.roster is None:
@@ -593,17 +634,22 @@ def _render_accounts(page, message: str) -> str:
                     + escape(choice.name) + "</option>"
                 )
             parts.append(
-                "<li>" + escape(student.name) + " " + escape(student.account) + " " + escape(item.name)
-                + "<form method=\"post\" action=\"" + action + "\">"
+                "<li class=\"account-row\"><div class=\"who\"><strong>" + escape(student.name) + "</strong>"
+                + "<span>" + escape(student.account) + "</span>"
+                + "<span class=\"badge badge-off\">" + escape(item.name) + "</span></div>"
+                + "<form class=\"pair\" method=\"post\" action=\"" + action + "\">"
                 + "<input type=\"hidden\" name=\"account\" value=\"" + escape(student.account) + "\">"
-                + "<input name=\"password\">"
+                + "<input name=\"password\" placeholder=\"新密码\">"
                 + "<button type=\"submit\" name=\"action\" value=\"重置密码\">重置密码</button></form>"
-                + "<form method=\"post\" action=\"" + action + "\">"
+                + "<form class=\"pair\" method=\"post\" action=\"" + action + "\">"
                 + "<input type=\"hidden\" name=\"account\" value=\"" + escape(student.account) + "\">"
                 + "<select name=\"class_id\">" + "".join(options) + "</select>"
                 + "<button type=\"submit\" name=\"action\" value=\"换班\">换班</button></form></li>"
             )
-    return _shell_document(page, "".join(parts), "账号管理")
+    rows = parts[2:] if message else parts[1:]
+    head = "".join(parts[:2] if message else parts[:1])
+    listed = "<ul class=\"task-list\">" + "".join(rows) + "</ul>" if rows else ""
+    return _shell_document(page, head + listed, "账号管理")
 
 
 def _apply_accounts(page, fields) -> str:
@@ -676,7 +722,12 @@ def _draft_on_page(page, text: str) -> str:
     if page.complete is None:
         return page.open_objectives("没有写出目标", text)
     try:
-        drafted = draft_objectives(page.complete, page.library.documents(), text)
+        drafted = draft_objectives(
+            page.complete,
+            page.library.documents(),
+            text,
+            retrieve=page.retrieve,
+        )
     except DraftError as error:
         return page.open_objectives(error.message, text)
     return page.open_objectives("", text, format_objectives(drafted))
@@ -692,7 +743,8 @@ def _confirm_on_page(page, text: str, objectives: str) -> str:
     if page.generation is None:
         return page.open_objectives("生成失败，没有创建任务", text, objectives)
     try:
-        task = page.generation.generate_from_confirmed(text, parsed)
+        passages = tuple(page.retrieve(text)) if page.retrieve is not None else ()
+        task = page.generation.generate_from_confirmed(text, parsed, passages)
     except Exception:
         return page.open_objectives("生成失败，没有创建任务", text, objectives)
     return _render(page, task.task_id)

@@ -70,7 +70,7 @@ def _document(page, body: str, current: str = "班级") -> str:
     return (
         "<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        "<link rel=\"stylesheet\" href=\"/static/classroom.css?v=8\"></head><body>"
+        "<link rel=\"stylesheet\" href=\"/static/classroom.css?v=14\"></head><body>"
         + wrapped
         + "<script src=\"/static/teacher.js\"></script></body></html>"
     )
@@ -92,13 +92,13 @@ def _list(page, message: str = "") -> str:
     items = []
     for item in page.roster.classes():
         href = action + "/" + quote(item.class_id, safe="")
-        items.append("<li><a href=\"" + href + "\">" + escape(item.name) + "</a></li>")
+        items.append("<li class=\"task-row\"><a href=\"" + href + "\">" + escape(item.name) + "</a></li>")
     body = (
-        "<h1>班级</h1>" + notice
-        + "<form method=\"post\" action=\"" + action + "\">"
-        + "<input name=\"name\">"
+        "<header class=\"page-head\"><h1>班级</h1></header>" + notice
+        + "<form class=\"compose\" method=\"post\" action=\"" + action + "\">"
+        + "<input name=\"name\" placeholder=\"班级名称\">"
         + "<button type=\"submit\" name=\"action\" value=\"创建\">创建</button></form>"
-        + "<ul>" + "".join(items) + "</ul>"
+        + ("<ul class=\"task-list\">" + "".join(items) + "</ul>" if items else "")
     )
     return _document(page, body)
 
@@ -119,17 +119,17 @@ def _class_page(page, class_id: str, message: str = "", failures=()) -> str:
     for student in page.roster.students(class_id):
         href = action + "/students/" + quote(student.account, safe="")
         students.append(
-            "<li><a href=\"" + href + "\">" + escape(student.name)
-            + "</a> " + escape(student.account) + "</li>"
+            "<li class=\"task-row\"><a href=\"" + href + "\">" + escape(student.name)
+            + "</a><span>" + escape(student.account) + "</span></li>"
         )
     body = (
-        "<h1>" + escape(record.name) + "</h1>" + notice + fail_html
-        + "<form method=\"post\" action=\"" + action + "\" enctype=\"multipart/form-data\">"
+        "<header class=\"page-head\"><h1>" + escape(record.name) + "</h1></header>" + notice + fail_html
+        + "<form class=\"compose\" method=\"post\" action=\"" + action + "\" enctype=\"multipart/form-data\">"
         + "<input type=\"file\" name=\"file\">"
         + "<button type=\"submit\" name=\"action\" value=\"导入\">导入</button></form>"
         + "<form method=\"post\" action=\"" + action + "\">"
-        + "<button type=\"submit\" name=\"action\" value=\"删除班级\">删除班级</button></form>"
-        + "<ul>" + "".join(students) + "</ul>"
+        + "<button class=\"danger\" type=\"submit\" name=\"action\" value=\"删除班级\">删除班级</button></form>"
+        + ("<ul class=\"task-list\">" + "".join(students) + "</ul>" if students else "")
     )
     return _document(page, body)
 
@@ -156,17 +156,17 @@ def _student_page(page, class_id: str, account: str, message: str = "") -> str:
     if message:
         notice = "<p>" + escape(message) + "</p>"
     body = (
-        "<h1>" + escape(student.name) + "</h1>"
-        + "<p>" + escape(student.account) + "</p>"
+        "<header class=\"page-head\"><h1>" + escape(student.name) + "</h1></header>"
+        + "<p class=\"who-account\">" + escape(student.account) + "</p>"
         + notice
-        + "<form method=\"post\" action=\"" + action + "\">"
-        + "<input name=\"name\">"
+        + "<form class=\"compose\" method=\"post\" action=\"" + action + "\">"
+        + "<input name=\"name\" placeholder=\"姓名\">"
         + "<button type=\"submit\" name=\"action\" value=\"修改姓名\">修改姓名</button></form>"
-        + "<form method=\"post\" action=\"" + action + "\">"
-        + "<input name=\"password\">"
+        + "<form class=\"compose\" method=\"post\" action=\"" + action + "\">"
+        + "<input name=\"password\" placeholder=\"新密码\">"
         + "<button type=\"submit\" name=\"action\" value=\"重置密码\">重置密码</button></form>"
         + "<form method=\"post\" action=\"" + action + "\">"
-        + "<button type=\"submit\" name=\"action\" value=\"移除\">移除</button></form>"
+        + "<button class=\"danger\" type=\"submit\" name=\"action\" value=\"移除\">移除</button></form>"
         + "<ul>" + "".join(_task_items(page, class_id, account)) + "</ul>"
     )
     return _document(page, body)

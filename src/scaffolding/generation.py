@@ -120,13 +120,13 @@ class TaskGeneration:
         self._origins[task.task_id] = origin
         return task
 
-    def generate_from_confirmed(self, demand: str, objectives) -> Task:
+    def generate_from_confirmed(self, demand: str, objectives, passages: tuple[tuple[str, str], ...] = ()) -> Task:
         from scaffolding.documents import confirm_prompt
         from scaffolding.text_generation import parse_text_task
 
         if self._text_generator is None:
             raise Rejected("there is no text generator")
-        reply = self._text_generator.generate(confirm_prompt(demand, tuple(objectives)))
+        reply = self._text_generator.generate(confirm_prompt(demand, tuple(objectives), passages))
         return self._tasks.create(parse_text_task(reply))
 
     def _generate(

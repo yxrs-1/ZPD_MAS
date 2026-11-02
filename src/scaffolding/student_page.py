@@ -29,6 +29,7 @@ class StudentPage:
         self.shown_at = {}
         self.prefix = prefix
         self.show_logout = show_logout
+        self.example_loader = lambda task_id: {}
 
     def todo(self) -> str:
         items = []
@@ -69,16 +70,17 @@ class StudentPage:
             pass
         return _render_session(session, self.prefix)
 
-    def ask(self, task_id: str, question: str, source: str, now: float) -> str:
+    def ask(self, task_id: str, question: str, source: str, now: float, *, on_text=None, on_kind=None) -> str:
         if not _published(self, task_id):
             return _missing()
         session = self._ensure_session(task_id)
         if session is None:
             return _render_work(self, task_id)
         self._note_shown(session, task_id, now)
+        session.examples = self.example_loader(task_id)
         if source in (HelpSource.PRESET.value, HelpSource.OWN.value):
             try:
-                session.ask(question, HelpSource(source))
+                session.ask(question, HelpSource(source), on_text=on_text, on_kind=on_kind)
             except Exception:
                 pass
         return _render_session(session, self.prefix)

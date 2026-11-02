@@ -1,11 +1,18 @@
 import json
 import os
-import threading
 import urllib.error
 import urllib.request
 
 from scaffolding.generation import QuestionCounts, Rejected
+from scaffolding.model_scaffold import feed_scaffold_stream
 from scaffolding.knowledge import LessonSource
+from scaffolding.model_trace import (
+    capture_model_call,
+    format_objectives,
+    format_questions,
+    remember_model_result,
+    tracing_model_call,
+)
 from scaffolding.objectives import Objective
 from scaffolding.records import ChoiceQuestion, OpenQuestion, SelectionMode, TrueFalseQuestion
 
@@ -139,41 +146,19 @@ class ModelQuestionGenerator:
         self._complete = complete
 
     def generate(self, counts: QuestionCounts, objectives: tuple) -> tuple:
-        text = self._complete(build_messages(counts, objectives))
-        if not isinstance(text, str):
-            raise Rejected("model reply is not the question JSON")
-        return parse_questions(text)
+        messages = build_messages(counts, objectives)
+        with tracing_model_call("生成题目", 生成目标=format_objectives(objectives)) as meta:
+            text = self._complete(messages)
+            if isinstance(text, str):
+                remember_model_result(messages, text)
+            if not isinstance(text, str):
+                raise Rejected("model reply is not the question JSON")
+            questions = parse_questions(text)
+            meta["生成题目"] = format_questions(questions)
+            return questions
 
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-
-
-def model_limit() -> int:
-    raw = os.environ.get("DEEPSEEK_CONCURRENCY")
-    if raw is None:
-        return 16
-    text = raw.strip()
-    if text == "" or not text.isascii() or not text.isdigit():
-        return 16
-    value = int(text)
-    if value < 1:
-        return 16
-    return value
-
-
-_slots = None
-_slots_limit = None
-_slots_guard = threading.Lock()
-
-
-def _model_slots():
-    global _slots, _slots_limit
-    limit = model_limit()
-    with _slots_guard:
-        if _slots is None or _slots_limit != limit:
-            _slots = threading.BoundedSemaphore(limit)
-            _slots_limit = limit
-        return _slots
 
 
 def deepseek_complete(messages, *, post, api_key: str | None = None) -> str:
@@ -187,12 +172,11 @@ def deepseek_complete(messages, *, post, api_key: str | None = None) -> str:
         "thinking": {"type": "disabled"},
     }
     try:
-        with _model_slots():
-            status, response = post(
-                DEEPSEEK_URL,
-                {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                payload,
-            )
+        status, response = post(
+            DEEPSEEK_URL,
+            {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            payload,
+        )
     except Rejected:
         raise
     except Exception as error:
@@ -200,6 +184,7 @@ def deepseek_complete(messages, *, post, api_key: str | None = None) -> str:
     content = _content(status, response)
     if content is None:
         raise Rejected("DeepSeek reply has no content")
+    capture_model_call(messages, content)
     return content
 
 
@@ -215,6 +200,75 @@ def _content(status: object, response: object) -> str | None:
     content = message.get("content")
     if type(content) is not str:
         return None
+    return content
+
+
+def deepseek_stream(messages, *, opener, api_key: str | None = None) -> str:
+    key = os.environ.get("DEEPSEEK_API_KEY") if api_key is None else api_key
+    if key is None or key.strip() == "":
+        raise Rejected("DeepSeek API key is missing")
+    payload = {
+        "model": "deepseek-flash",
+        "messages": [dict(message) for message in messages],
+        "stream": True,
+        "thinking": {"type": "disabled"},
+    }
+    request = urllib.request.Request(
+        DEEPSEEK_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        response = opener(request, timeout=120)
+    except urllib.error.HTTPError as error:
+        response = error
+    except Rejected:
+        raise
+    except Exception as error:
+        raise Rejected("DeepSeek request failed") from error
+    parts = []
+    try:
+        status = response.status if hasattr(response, "status") else response.code
+        if status != 200:
+            raise Rejected("DeepSeek request failed")
+        for raw in response:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            piece = _delta_content(data)
+            if piece == "":
+                continue
+            parts.append(piece)
+            feed_scaffold_stream("".join(parts))
+    finally:
+        close = getattr(response, "close", None)
+        if close is not None:
+            close()
+    content = "".join(parts)
+    if content == "":
+        raise Rejected("DeepSeek reply has no content")
+    capture_model_call(messages, content)
+    return content
+
+
+def _delta_content(data: str) -> str:
+    try:
+        body = json.loads(data)
+    except json.JSONDecodeError:
+        return ""
+    choices = body.get("choices") if isinstance(body, dict) else None
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return ""
+    delta = choices[0].get("delta")
+    if not isinstance(delta, dict):
+        return ""
+    content = delta.get("content")
+    if type(content) is not str:
+        return ""
     return content
 
 
