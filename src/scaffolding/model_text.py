@@ -1,4 +1,5 @@
 from scaffolding.generation import Rejected
+from scaffolding.model_trace import fill_text_task, remember_model_result, tracing_model_call
 
 
 TEXT_SYSTEM = (
@@ -34,7 +35,11 @@ class ModelTextGenerator:
         self._complete = complete
 
     def generate(self, text: str) -> str:
-        reply = self._complete(build_text_messages(text))
-        if not isinstance(reply, str):
-            raise Rejected("model reply is not the text task JSON")
-        return reply
+        messages = build_text_messages(text)
+        with tracing_model_call("生成题目") as meta:
+            reply = self._complete(messages)
+            if not isinstance(reply, str):
+                raise Rejected("model reply is not the text task JSON")
+            remember_model_result(messages, reply)
+            fill_text_task(meta, reply)
+            return reply

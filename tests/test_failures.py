@@ -101,7 +101,7 @@ def test_later_ask_failures_keep_the_existing_scaffold():
         def __init__(self) -> None:
             self._calls = 0
 
-        def produce(self, scaffold_type: str, question: str, statement: object, answer: object) -> ScaffoldDraft:
+        def produce(self, scaffold_type: str, question: str, statement: object, answer: object, example_source: str = "") -> ScaffoldDraft:
             self._calls += 1
             if self._calls == 1:
                 return ScaffoldDraft(text="先看这句提示")

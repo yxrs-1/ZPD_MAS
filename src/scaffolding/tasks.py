@@ -16,6 +16,7 @@ class Task:
     published: bool = False
     started: bool = False
     submitted: bool = False
+    title: str = ""
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class ListedTask:
     task_id: str
     status: str
     questions: tuple[ListedQuestion, ...]
+    title: str = ""
 
 
 def display_status(task: Task) -> str | None:
@@ -113,6 +115,11 @@ class TaskCatalog:
         self._tasks[task_id] = updated
         return updated
 
+    def rename(self, task_id: str, title: str) -> Task:
+        updated = replace(self.get(task_id), title=title)
+        self._tasks[task_id] = updated
+        return updated
+
     def publish(self, task_id: str) -> Task:
         task = self.get(task_id)
         if task.questions == ():
@@ -131,7 +138,7 @@ class TaskCatalog:
             status = display_status(task)
             if status is None:
                 continue
-            listed.append(ListedTask(task.task_id, status, tuple(_public(question) for question in task.questions)))
+            listed.append(ListedTask(task.task_id, status, tuple(_public(question) for question in task.questions), task.title))
         return tuple(listed)
 
     def mark_submitted(self, task_id: str) -> Task:

@@ -150,6 +150,7 @@ vite.config.ts.timestamp-*
 
 # Local worktrees and Python test artifacts
 .worktrees/
+.superpowers/
 .venv/
 __pycache__/
 .pytest_cache/

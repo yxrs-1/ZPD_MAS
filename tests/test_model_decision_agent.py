@@ -44,7 +44,7 @@ def test_suggest_drops_blanks_and_calls_the_completer_once():
     agent = ModelDecisionAgent(complete)
     record = _record()
 
-    assert agent.suggest(record) == ("先看题目", "先看题目", "  能再看一看条件吗？")
+    assert agent.suggest(record) == ("先看题目", "先看题目")
     assert complete.calls == [build_preset_messages(record)]
 
 

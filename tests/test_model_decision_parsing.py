@@ -18,7 +18,6 @@ def test_presets_drop_blanks_and_keep_order_duplicates_and_original_text():
     assert parse_presets("\n" + _presets() + " ") == (
         "先看题目",
         "先看题目",
-        "  能再看一看条件吗？",
     )
     assert Rejected is not TaskRejected
 

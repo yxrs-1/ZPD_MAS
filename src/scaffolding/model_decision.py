@@ -1,5 +1,6 @@
 import json
 
+from scaffolding.model_trace import remember_model_result, tracing_model_call
 from scaffolding.records import ChoiceQuestion, ItemAnswer, OpenQuestion, TaskRecord, TrueFalseQuestion
 
 
@@ -21,6 +22,8 @@ def parse_presets(text: str) -> tuple[str, ...]:
         if item.strip() == "":
             continue
         kept.append(item)
+        if len(kept) == 2:
+            break
     return tuple(kept)
 
 
@@ -45,7 +48,7 @@ def _object(text: str, key: str):
 
 _PRESET_SYSTEM = (
     "只回一份 JSON 对象，不要代码块，不要其他文字。\n"
-    "顶层只有「预设提问」。它的值是字符串数组，数组可以是空的。\n"
+    "顶层只有「预设提问」。它的值是字符串数组，有零到两条。\n"
     "每一条都不能为空白。空白不算已填写。\n"
     "不要写出学情。"
 )
@@ -139,7 +142,19 @@ class ModelDecisionAgent:
         self._complete = complete
 
     def suggest(self, record: TaskRecord) -> tuple[str, ...]:
-        return parse_presets(self._complete(build_preset_messages(record)))
+        messages = build_preset_messages(record)
+        with tracing_model_call("预设提问"):
+            text = self._complete(messages)
+            if isinstance(text, str):
+                remember_model_result(messages, text)
+            return parse_presets(text)
 
     def choose_type(self, record: TaskRecord, question: str) -> str:
-        return parse_scaffold_type(self._complete(build_type_messages(record, question)))
+        messages = build_type_messages(record, question)
+        with tracing_model_call("支架类型") as meta:
+            text = self._complete(messages)
+            if isinstance(text, str):
+                remember_model_result(messages, text)
+            chosen = parse_scaffold_type(text)
+            meta["支架类型"] = chosen
+            return chosen

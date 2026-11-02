@@ -1,6 +1,7 @@
 import json
 
 from scaffolding.knowledge import LessonRetrieval, LessonSource, StageRetrieval
+from scaffolding.model_trace import format_objectives, remember_model_result, tracing_model_call
 from scaffolding.objectives import ObjectiveDraft, Rejected
 
 
@@ -101,4 +102,13 @@ class ModelObjectiveExtractor:
         self._complete = complete
 
     def extract(self, retrieval: LessonRetrieval | StageRetrieval) -> tuple[ObjectiveDraft, ...]:
-        return parse_objectives(self._complete(build_messages(retrieval)), retrieval)
+        messages = build_messages(retrieval)
+        with tracing_model_call("生成目标") as meta:
+            text = self._complete(messages)
+            if isinstance(text, str):
+                remember_model_result(messages, text)
+            drafts = parse_objectives(text, retrieval)
+            formatted = format_objectives(drafts)
+            if formatted:
+                meta["生成目标"] = formatted
+            return drafts

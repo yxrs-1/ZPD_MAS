@@ -117,6 +117,7 @@ class StudentView:
                 task.task_id,
                 status,
                 tuple(_listed_question(question) for question in task.questions),
+                task.title,
             ))
         return tuple(listed)
 
