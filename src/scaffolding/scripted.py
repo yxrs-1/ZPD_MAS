@@ -30,7 +30,7 @@ class ScriptedScaffoldAgent:
         self.error = error
         self.calls: list[dict[str, object]] = []
 
-    def produce(self, scaffold_type: str, question: str, questions: tuple, answers: tuple) -> ScaffoldDraft:
+    def produce(self, scaffold_type: str, question: str, questions: tuple, answers: tuple, example_source: str = "") -> ScaffoldDraft:
         self.calls.append(
             {
                 "scaffold_type": scaffold_type,

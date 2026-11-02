@@ -33,10 +33,12 @@ def test_the_prompt_lists_the_task_and_this_question():
         "role": "system",
         "content": (
             "只回一份 JSON 对象，不要代码块，不要其他文字。\n"
-            "顶层只有「文字」和「HTML」。两个值都是字符串，可以是空字符串。\n"
-            "HTML 里只放四类素材，写成 <asset kind=\"…\" name=\"…\">…</asset>。\n"
-            "kind 是图片素材、思维导图、结构图、微格动画之一，name 是文件名。\n"
-            "支架的文字和 HTML 不要写出参考答案，也不要写出学情。"
+            "顶层只有「文字」和「源码」。两个值都是字符串，可以是空字符串。\n"
+            "不要写 HTML，不要写文件名。\n"
+            "文字写两三句，不要引用题干原句。\n"
+            "读者是正在做这道题的学生。用「你」直接对这个人说。\n"
+            "文字里不出现：学生、教师、引导、让学生、请学生、学情。\n"
+            "支架的文字和源码不要写出参考答案，也不要写出学情。"
         ),
     }
     assert user == {
@@ -82,6 +84,13 @@ def test_the_prompt_lists_the_task_and_this_question():
             "修改痕迹：\n"
             "第一稿\n"
             "\n"
+            "素材：思维导图\n"
+            "源码是缩进大纲。第一行是根，下一层多两个空格。\n"
+            "例如：\n"
+            "网络\n"
+            "  带宽\n"
+            "  延迟\n"
+            "文字的第一句是：先看下面这张图。\n"
             "支架类型：提示\n"
             "这次提问：还缺{什么}？"
         ),
@@ -98,4 +107,6 @@ def test_an_empty_selection_trace_is_a_blank_line():
         (ItemAnswer(selected=("正确",), selected_revisions=((),)),),
     )
 
-    assert user["content"].endswith("修改痕迹：\n\n\n支架类型：提示\n这次提问：还缺什么？")
+    assert user["content"].endswith(
+        "修改痕迹：\n\n\n素材：思维导图\n源码是缩进大纲。第一行是根，下一层多两个空格。\n例如：\n网络\n  带宽\n  延迟\n文字的第一句是：先看下面这张图。\n支架类型：提示\n这次提问：还缺什么？"
+    )
