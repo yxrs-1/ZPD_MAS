@@ -2,6 +2,8 @@ from dataclasses import dataclass, replace
 
 from scaffolding.agents import DecisionAgent, ScaffoldAgent, ScaffoldDraft
 from scaffolding.html_assets import assets_from_html, safe_filename
+from scaffolding.model_scaffold import begin_scaffold_progress, end_scaffold_progress
+from scaffolding.scaffold_figures import figure_asset, kind_for
 from scaffolding.records import (
     ASSET_KIND_VALUES,
     SCAFFOLD_TYPE_VALUES,
@@ -29,6 +31,8 @@ class DialogueTurn:
     question: str
     source: HelpSource
     scaffold: Scaffold | None
+    scaffold_type: str = ""
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,7 @@ class Session:
         self._scaffold_agent = scaffold_agent
         self._presets = tuple(decision.suggest(self.record))
         self._scaffold: Scaffold | None = None
+        self.examples: dict = {}
 
     @classmethod
     def restore(
@@ -80,16 +85,22 @@ class Session:
         session._scaffold_agent = scaffold_agent
         session._presets = tuple(presets)
         session._scaffold = scaffold
+        session.examples = {}
         return session
 
     @property
     def record(self) -> TaskRecord:
-        return TaskRecord(self.work.questions, self.work.answers, self.work.behavior)
+        return TaskRecord(
+            self.work.questions,
+            self.work.answers,
+            self.work.behavior,
+            dialogue=self.work.dialogue,
+        )
 
     def view(self) -> PageView:
         submitted = self.work.submitted
         return PageView(
-            self._presets,
+            self._presets[:2],
             self._scaffold,
             dialogue=self.work.dialogue,
             answers_locked=submitted,
@@ -114,7 +125,7 @@ class Session:
     def note_dwell(self, seconds: float) -> None:
         self.work.behavior = replace(self.work.behavior, dwell_seconds=seconds)
 
-    def ask(self, question: str, source: HelpSource) -> PageView:
+    def ask(self, question: str, source: HelpSource, *, on_text=None, on_kind=None) -> PageView:
         if self.work.submitted:
             raise Rejected("already submitted")
         if question.strip() == "":
@@ -129,20 +140,40 @@ class Session:
             return self._keep_existing_scaffold(question, source)
         if scaffold_type not in SCAFFOLD_TYPE_VALUES:
             return self._keep_existing_scaffold(question, source)
+        kind = kind_for(scaffold_type)
+        example_source = ""
+        if kind is not None and kind in self.examples:
+            example_source = self.examples[kind][0]
+        token = None
+        if on_text is not None or on_kind is not None:
+            token = begin_scaffold_progress(on_text)
+            if on_kind is not None:
+                on_kind("" if kind is None else kind)
         try:
             draft = self._scaffold_agent.produce(
                 scaffold_type,
                 question,
                 self.work.questions,
                 self.work.answers,
+                example_source=example_source,
             )
         except Exception:
             return self._keep_existing_scaffold(question, source)
+        finally:
+            if token is not None:
+                end_scaffold_progress(token)
         scaffold = _visible_scaffold(draft)
+        if kind is not None:
+            asset = figure_asset(kind, getattr(draft, "source", ""), self.examples)
+            if asset is not None:
+                scaffold = Scaffold(text=scaffold.text, assets=scaffold.assets + (asset,))
         if scaffold.is_empty():
             return self._keep_existing_scaffold(question, source)
         self._scaffold = scaffold
-        self.work.dialogue = self.work.dialogue + (DialogueTurn(question, source, scaffold),)
+        reason = getattr(self._decision, "last_reason", "")
+        self.work.dialogue = self.work.dialogue + (
+            DialogueTurn(question, source, scaffold, scaffold_type, reason),
+        )
         return self.view()
 
     def submit(self) -> PageView:

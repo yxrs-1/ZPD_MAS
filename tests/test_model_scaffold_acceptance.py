@@ -23,8 +23,8 @@ class QueueComplete:
         return reply
 
 
-def _reply(text: str, html: str) -> str:
-    return json.dumps({"文字": text, "HTML": html}, ensure_ascii=False)
+def _reply(text: str, source: str) -> str:
+    return json.dumps({"文字": text, "源码": source}, ensure_ascii=False)
 
 
 def test_model_scaffold_agent_spec_is_in_the_workspace():
@@ -33,8 +33,8 @@ def test_model_scaffold_agent_spec_is_in_the_workspace():
 
 
 def test_the_session_shows_text_and_assets_and_keeps_an_existing_scaffold():
-    html = '<asset kind="思维导图" name="组成.svg">人员—硬件</asset>'
-    shown = _reply("先看人员和硬件是否都写到了。", html)
+    source = "组成\n  人员\n  硬件\n"
+    shown = _reply("先看人员和硬件是否都写到了。", source)
     complete = QueueComplete([
         shown,
         "```json\n" + shown + "\n```",
@@ -49,12 +49,14 @@ def test_the_session_shows_text_and_assets_and_keeps_an_existing_scaffold():
     assert view.scaffold is not None
     assert view.scaffold.text == "先看人员和硬件是否都写到了。"
     assert view.scaffold.assets[0].kind == AssetKind.MIND_MAP
-    assert view.scaffold.assets[0].filename == "组成.svg"
-    assert view.scaffold.assets[0].content == "人员—硬件".encode()
+    assert view.scaffold.assets[0].filename == "思维导图.svg"
+    assert view.scaffold.assets[0].content.startswith(b"<svg")
+    assert "人员" in view.scaffold.assets[0].content.decode()
     assert view.presets == ("先看题目",)
     assert "参考答案：正确" in complete.calls[0][1]["content"]
     assert "支架类型：提示" in complete.calls[0][1]["content"]
     assert complete.calls[0][1]["content"].endswith("这次提问：旧求助原文")
+    assert "不要写 HTML" in complete.calls[0][0]["content"]
     assert "不要写出参考答案" in complete.calls[0][0]["content"]
     assert "12.5" not in complete.calls[0][1]["content"]
     assert "停留时间" not in complete.calls[0][1]["content"]

@@ -9,6 +9,7 @@ class ScaffoldDraft:
     text: str = ""
     html: str = ""
     assets: tuple[Asset, ...] = ()
+    source: str = ""
 
 
 class DecisionAgent(Protocol):
@@ -26,5 +27,6 @@ class ScaffoldAgent(Protocol):
         question: str,
         questions: tuple,
         answers: tuple[ItemAnswer, ...],
+        example_source: str = "",
     ) -> ScaffoldDraft:
         ...

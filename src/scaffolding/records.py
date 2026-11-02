@@ -116,3 +116,4 @@ class TaskRecord:
     questions: tuple[ChoiceQuestion | TrueFalseQuestion | OpenQuestion, ...]
     answers: tuple[ItemAnswer, ...]
     behavior: Behavior = Behavior()
+    dialogue: tuple = ()
